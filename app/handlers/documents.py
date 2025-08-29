@@ -6,9 +6,10 @@ import logging
 from pathlib import Path
 
 from aiogram import Router, types, F
+from aiogram.types import BufferedInputFile
 
 from ..utils.files import safe_filename, max_size_bytes
-from ..services.processing import process_uploaded_file
+from ..services.ms_client import process_file
 
 
 router = Router()
@@ -60,9 +61,16 @@ async def on_document(message: types.Message) -> None:
     await message.answer("Файл получен, обрабатываю…")
 
     try:
-        await process_uploaded_file(dest)
+        xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
+        buf = BufferedInputFile(xlsx_bytes, filename=out_name)
+        await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
     except Exception:  # keep bot stable on processing errors
         logging.exception("Processing failed for %s", dest)
+    finally:
+        try:
+            dest.unlink(missing_ok=True)
+        except Exception:
+            logging.exception("Failed to remove %s", dest)
 
 
 @router.message(F.photo)
@@ -90,9 +98,16 @@ async def on_photo(message: types.Message) -> None:
     await message.answer("Файл получен, обрабатываю…")
 
     try:
-        await process_uploaded_file(dest)
+        xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
+        buf = BufferedInputFile(xlsx_bytes, filename=out_name)
+        await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
     except Exception:
         logging.exception("Processing failed for %s", dest)
+    finally:
+        try:
+            dest.unlink(missing_ok=True)
+        except Exception:
+            logging.exception("Failed to remove %s", dest)
 
 
 @router.message(F.audio)
