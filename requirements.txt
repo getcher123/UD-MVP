@@ -1,4 +1,6 @@
 fastapi
-aiogram==2.22.2
+aiogram>=3
 gunicorn
+httpx
+python-dotenv
 uvicorn
