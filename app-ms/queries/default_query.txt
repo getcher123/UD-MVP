@@ -1,0 +1,8 @@
+# Default AgentQL query placeholder
+
+SELECT
+  some_column,
+  another_column
+FROM document
+LIMIT 100;
+

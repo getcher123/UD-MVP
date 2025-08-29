@@ -1,0 +1,10 @@
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+pydantic==2.*
+httpx==0.27.*
+agentql==0.*
+playwright==1.*
+pillow==10.*
+img2pdf==0.5.*
+openpyxl==3.*
+python-multipart==0.0.9
