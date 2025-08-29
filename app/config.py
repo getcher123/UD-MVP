@@ -13,6 +13,7 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     bot_token: str = os.getenv("BOT_TOKEN", "")
+    webhook_url: str = os.getenv("WEBHOOK_URL", "")
 
 
 settings = Settings()
