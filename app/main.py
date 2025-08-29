@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 
 from .config import settings
+from .utils.files import ensure_dirs
 from .handlers.common import router as common_router
 from .handlers.documents import router as documents_router
 
@@ -23,25 +25,25 @@ dp.include_router(common_router)
 dp.include_router(documents_router)
 
 
-# --- FastAPI app ---
-app = FastAPI()
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    """Set webhook on startup if WEBHOOK_URL provided."""
+# --- FastAPI app (lifespan) ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    ensure_dirs()
     webhook_url = getattr(settings, "webhook_url", "")
     if webhook_url:
         await bot.set_webhook(webhook_url)
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    """Remove webhook and close bot session on shutdown."""
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
+        yield
     finally:
-        await bot.session.close()
+        # Shutdown
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+        finally:
+            await bot.session.close()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/webhook")
@@ -66,6 +68,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host=os.getenv("HOST", "0.0.0.0"),
-        port=int(os.getenv("PORT", "8000")),
+        port=int(os.getenv("PORT", "8080")),
         reload=bool(os.getenv("RELOAD", "0") == "1"),
     )
