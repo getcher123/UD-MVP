@@ -1,0 +1,70 @@
+# ОС
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+
+# Виртуальные окружения
+.venv/
+env/
+venv/
+*.env
+.envrc
+
+# Логи
+*.log
+logs/
+*.out
+*.err
+
+# Кэш и временные файлы
+*.swp
+*.swo
+*~
+.cache/
+.pytest_cache/
+.mypy_cache/
+ruff_cache/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+*.ipynb
+
+# Сборки / дистрибутивы
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Docker
+*.pid
+*.sock
+docker-compose.override.yml
+
+# Node.js (если будет фронт или тулзы)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Тестовые/локальные данные
+*.sqlite3
+*.db
+tmp/
+temp/
+uploads/
+
+# Конфигурация (чтобы не утекли ключи)
+config.yaml
+config.yml
+conf.yml
+config.json
+credentials.json
