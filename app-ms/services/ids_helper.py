@@ -165,3 +165,35 @@ __all__ = [
     "compose_building_name",
 ]
 
+# Listing identifier generation per rules v3
+from hashlib import sha256
+from typing import Any, Dict
+
+
+def listing_id(core: Dict[str, Any], rules: Dict[str, Any], source_file: str) -> str:
+    """
+    Compose stable listing_id from normalized parts and a short hash of source file basename.
+
+    Uses rules.identifier.listing_id: compose_parts, hash_len, join_token.
+    Recognized part keys: object_id, building_token_slug, use_type_norm_slug, floors_norm_slug, area_1dp.
+    """
+    ident = rules.get("identifier", {}).get("listing_id", {}) or {}
+    parts_keys = ident.get("compose_parts", []) or []
+    join_token = ident.get("join_token", "__")
+    hash_len = int(ident.get("hash_len", 8))
+
+    values: Dict[str, Any] = {}
+    values["object_id"] = object_id(core.get("object_name") or "")
+    values["building_token_slug"] = building_token_slug(core.get("building_raw"))
+    values["use_type_norm_slug"] = slug(core.get("use_type_norm") or "")
+    values["floors_norm_slug"] = slug(core.get("floors_norm") or "")
+    area = core.get("area_sqm")
+    values["area_1dp"] = f"{area:.1f}" if isinstance(area, (int, float)) else ""
+
+    seq = [str(values.get(k, "")) for k in parts_keys]
+    base = join_token.join(seq)
+
+    base_name = (source_file or "").split("/")[-1].split("\\")[-1]
+    digest = sha256(base_name.encode("utf-8")).hexdigest()[:hash_len]
+    return f"{base}{join_token}{digest}" if base else digest
+

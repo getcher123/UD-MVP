@@ -6,26 +6,16 @@ Derivation helpers for listing-level metrics.
 Implements:
 - derive_rent_rate_year_sqm_base(listing, rules)
 - derive_gross_month_total(listing, rules)
-- derive_all(listing, rules)
+- derive_all(listing_norm, rules)
 
 Rules schema (subset) expected from YAML defaults (see app-ms/config/defaults.yml):
 - derivation.rent_rate_year_sqm_base.priority: ["direct", "reconstruct_from_month"]
-- derivation.rent_rate_year_sqm_base.reconstruct_from_month:
-    respect_vat: bool
-    respect_opex: bool
-    vat_fallback: float
-    round_decimals: int
-- derivation.gross_month_total.round_decimals: int
-- quality.outliers.rent_rate_year_sqm_base.min/max: float
-
-Notes:
-- VAT mapping: treat listing["rent_vat"] == "включен" as VAT included; "не применяется" => no VAT.
-- OPEX handling during reconstruction: if listing.get("opex_included") is True, subtract
-  listing.get("opex_year_per_sqm") to get base rent per sqm per year; otherwise keep as-is.
-  (This can be adjusted based on data semantics.)
+- derivation.rent_rate_year_sqm_base.reconstruct_from_month: respect_vat, respect_opex, vat_fallback, round_decimals
+- derivation.gross_month_total.round_decimals
+- quality.outliers.rent_rate_year_sqm_base.min/max
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 
 def _r(d: Dict[str, Any], path: list[str], default: Any = None) -> Any:
@@ -164,22 +154,34 @@ def derive_gross_month_total(listing: Dict[str, Any], rules: Dict[str, Any]) -> 
 
 def derive_all(listing: Dict[str, Any], rules: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Compute all derived metrics and return an updates dict.
-
-    Returns dict with keys present only for successfully derived values.
-    Example keys:
-    - rent_rate_year_sqm_base
-    - gross_month_total
-    - quality_flags (list[str]) when outliers detected (reserved for extension)
+    Compute all derived metrics and quality flags from a normalized listing dict.
+    Returns keys: rent_rate_year_sqm_base, gross_month_total, quality_flags (list).
     """
     out: Dict[str, Any] = {}
+    flags: list[str] = []
+
     base = derive_rent_rate_year_sqm_base(listing, rules)
     if base is not None:
         out["rent_rate_year_sqm_base"] = base
 
     monthly = derive_gross_month_total(listing, rules)
     if monthly is not None:
-        out["gross_month_total"] = monthly
+        out["rent_month_total_gross"] = monthly
+
+    # Quality flags
+    area = _as_float(listing.get("area_sqm"))
+    if area is not None and area <= 0:
+        flags.append("invalid_area")
+    qmin = _as_float(_r(rules, ["quality", "outliers", "rent_rate_year_sqm_base", "min"], None))
+    qmax = _as_float(_r(rules, ["quality", "outliers", "rent_rate_year_sqm_base", "max"], None))
+    if base is not None:
+        if qmin is not None and base < qmin:
+            flags.append("base_rate_below_min")
+        if qmax is not None and base > qmax:
+            flags.append("base_rate_above_max")
+
+    if flags:
+        out["quality_flags"] = ";".join(flags)
 
     return out
 
@@ -189,4 +191,3 @@ __all__ = [
     "derive_gross_month_total",
     "derive_all",
 ]
-

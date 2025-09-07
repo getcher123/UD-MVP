@@ -32,6 +32,14 @@ def run_agentql(pdf_path: str, query: str, mode: str = "standard", timeout_sec: 
     if not p.exists() or not p.is_file():
         raise ServiceError(ErrorCode.AGENTQL_ERROR, 424, f"PDF not found: {pdf_path}")
 
+    # Allow overriding timeout via env for debugging (seconds)
+    try:
+        timeout_env = float(os.getenv("AGENTQL_TIMEOUT", "0") or 0)
+        if timeout_env > 0:
+            timeout_sec = timeout_env
+    except ValueError:
+        pass
+
     url = "https://api.agentql.com/v1/query-document"
     headers = {"X-API-Key": api_key}
 
@@ -42,6 +50,7 @@ def run_agentql(pdf_path: str, query: str, mode: str = "standard", timeout_sec: 
     for i in range(1, attempts + 1):
         start = time.perf_counter()
         try:
+            logger.info("agentql_call_start", extra={"file": str(p), "mode": mode, "timeout_sec": timeout_sec})
             with p.open("rb") as f:
                 files = {
                     "file": (p.name, f, "application/pdf"),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -21,11 +22,14 @@ install_request_logging(app)
 app.include_router(health_router)
 app.include_router(process_router)
 
-
-@app.get("/healthz")
-def healthz(request_id: str = Depends(make_request_id)):
-    return {"ok": True, "request_id": request_id}
-
+# CORS for local debugging
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/error")
 def test_error(request_id: str = Depends(make_request_id)):
@@ -64,3 +68,10 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         }
     }
     return JSONResponse(status_code=422, content=body)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    import uvicorn
+    # Run from repository root with: python app-ms/main.py
+    # Or: cd app-ms && uvicorn main:app --reload
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

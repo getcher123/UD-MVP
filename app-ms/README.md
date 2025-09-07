@@ -1,100 +1,220 @@
 # UD-MVP Microservice (app-ms)
 
-Purpose: accept a file → convert to PDF → run through AgentQL → normalize → return Excel/JSON.
+Назначение: **принять файл → привести к PDF → извлечь через AgentQL → нормализовать → вернуть Excel/JSON.**
 
-This microservice exposes a simple HTTP API that receives an uploaded file, performs a
-conversion and extraction pipeline, and returns a structured result. The intended flow is:
+Микросервис предоставляет простой HTTP API, который принимает загруженный файл, прогоняет его через конвертацию и извлечение данных, нормализует результаты и возвращает структурированный ответ.
 
-- Input: User uploads a document or image (PDF/DOCX/PPTX/XLSX/JPG/PNG, etc.).
-- Convert: If not already PDF, convert the file to PDF.
-- Extract: Run the PDF through AgentQL using a predefined query to extract tabular data.
-- Normalize: Clean and normalize the extracted data for consistent downstream usage.
-- Output: Return an Excel workbook (and/or JSON) containing the normalized results.
+* **Вход:** документ/изображение (PDF/DOCX/PPTX/XLSX/JPG/PNG).
+* **Конвертация:** всё приводится к PDF (если вход уже PDF — пропускается).
+* **Извлечение:** запуск AgentQL с предопределённым QUERY.
+* **Нормализация:** очистка и приведение данных к единому формату.
+* **Выход:** Excel (и/или JSON) с **помещениями (listings)** — каждая строка = одно помещение.
 
-This repository currently ships with a runnable stub implementation:
+> ⚠️ По умолчанию формируется **листинг-витрина**: **никакой группировки по зданиям**.
 
-- `POST /process_file` accepts `multipart/form-data` with fields `file=@...` and `chat_id`.
-- It returns a small example Excel file to demonstrate the I/O contract.
-- Replace the placeholder service functions under `services/` with real implementations.
+---
 
-## Endpoints
+## Эндпоинты
 
-- `GET /health` — health check.
-- `POST /process_file` — accepts a file and returns an Excel file.
+* `GET /healthz` — проверка готовности.
+* `GET /version` — версия микросервиса.
+* `POST /process_file` — загрузка файла и получение результата.
 
-## Local Run
+### `POST /process_file`
+
+**Форма:** `multipart/form-data`
+
+Поля:
+
+* `file` — бинарный файл (обязательно)
+* `output` — `excel` | `json` | `both` (по умолчанию `excel`)
+* `return_sheet_url` — `true|false` (по умолчанию `false`; зарезервировано под интеграцию с Google Sheets)
+* `request_id` — строка для идемпотентности (опционально)
+
+**Ответ (пример при `output=excel`):**
+
+```json
+{
+  "request_id": "b9c7e8f0b2d14c1bbf7c4a0f4e2d9a55",
+  "items_count": 42,
+  "excel_url": "https://<BASE_URL>/results/b9c7e8f0.../listings.xlsx",
+  "pending_questions": [],
+  "meta": {
+    "source_file": "input.pdf",
+    "timing_ms": 4312,
+    "listings_total": 42
+  }
+}
+```
+
+**Коды ошибок:** `400` (валидация/тип/размер), `422` (конвертация PDF), `424` (AgentQL), `429` (rate limit), `500` (внутренняя).
+
+---
+
+## Локальный запуск
 
 ```bash
 cd app-ms
 pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 9000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## Environment
+**Smoke (curl):**
 
-Common variables you might add as you implement real logic:
+```bash
+curl -X POST \
+  -F "file=@examples/demo.pdf" \
+  http://localhost:8000/process_file -o listings.xlsx
+```
 
-- `AGENTQL_API_KEY` — API key for AgentQL
-- `DEFAULT_QUERY_PATH` — path to the default AgentQL query file (defaults to `queries/default_query.txt`)
+**HTTPie:**
 
-## Выходной формат
+```bash
+http --form POST :8000/process_file file@examples/demo.pdf output:=both
+```
 
-- Уровень: агрегирование до уровня зданий (buildings).
-- Колонки (строгий порядок) — см. `config/defaults.yml → output.building_columns`:
-  - building_id
-  - building_name
-  - object_id
-  - object_name
-  - use_type_set_norm
-  - fitout_condition_mode
-  - delivery_date_earliest
-  - floors_covered_norm
-  - area_sqm_total
-  - listing_count
-  - rent_rate_year_sqm_base_min
-  - rent_rate_year_sqm_base_avg
-  - rent_rate_year_sqm_base_max
-  - rent_vat_norm_mode
-  - opex_year_per_sqm_avg
-  - rent_month_total_gross_avg
-  - sale_price_per_sqm_min
-  - sale_price_per_sqm_avg
-  - sale_price_per_sqm_max
-  - sale_vat_norm_mode
-  - source_files
-  - request_id
-  - quality_flags
+---
 
-- Имена/ID:
-  - building_name: формируется по шаблону из `aggregation.building.name.compose`, фактически `{object_name}{suffix}`, где `suffix = ", {token}"` если в `building_name` распознан токен (например, `стр. 1`, `корпус 2`, `литера Б`).
-  - building_id: slug от `object_name` и токена здания: `{object_id}__{building_token_slug}`; если токена нет — просто `{object_id}`.
+## Переменные окружения
 
-- Excel: один лист, первая строка заморожена (freeze `A2`), включён автофильтр, простые числовые форматы (без валютных символов).
+* `AGENTQL_API_KEY` — ключ для AgentQL.
+* `DEFAULT_QUERY_PATH` — путь к QUERY (по умолчанию `app-ms/queries/default_query.txt`).
+* `RESULTS_DIR` — каталог для результата (по умолчанию `data/results`).
+* `BASE_URL` — базовый URL для формирования `excel_url` (опционально).
+* Прочие — см. `core/config.py`.
 
-## Этажи
+---
 
-- Поддерживаются одиночные значения, списки и диапазоны с разделителями:
-  - множественные: `,`, `;`, `/`, ` и `, `&`
-  - диапазон: `-` или `–`
-- Удаляются служебные слова: `этаж`, `эт`, `э.`
-- Спец-этажи маппятся: `подвал` (−1), `цоколь`, `мезонин`.
-- Рендер: численные этажи сортируются, подряд идущие объединяются в диапазоны, спец-строки остаются как есть, итог соединяется `"; "`.
+## Выходной формат (листинги)
 
-Примеры:
-- "1 и 2" → "1–2"
-- "1,3;5" → "1; 3; 5"
-- "цоколь/1-2" → "1–2; цоколь"
+**Уровень:** **ЛИСТИНГИ** — **каждая строка** = одно помещение, **без группировки по зданиям**.
+
+**Строгий порядок колонок** задаётся в `config/defaults.yml → output.listing_columns`:
+
+1. `listing_id`
+2. `object_id`
+3. `object_name`
+4. `building_id`
+5. `building_name`
+6. `use_type_norm`
+7. `area_sqm`
+8. `divisible_from_sqm`
+9. `floors_norm`
+10. `market_type`
+11. `fitout_condition_norm`
+12. `delivery_date_norm`
+13. `rent_rate_year_sqm_base`
+14. `rent_vat_norm`
+15. `opex_year_per_sqm`
+16. `opex_included`
+17. `rent_month_total_gross`
+18. `sale_price_per_sqm`
+19. `sale_vat_norm`
+20. `source_file`
+21. `request_id`
+22. `quality_flags`
+
+**Имена/ID:**
+
+* `building_name` = `{object_name}` + `", {token}"` (если извлечён токен: `стр. 1`, `корпус 2`, `литера Б`, `блок C`).
+* `building_id` = `{object_id}__{building_token_slug}`; если токена нет — `{object_id}`.
+* `listing_id` — конкатенация нормализованных частей (`object_id`, `building_token_slug`, `use_type_norm_slug`, `floors_norm_slug`, `area_1dp`) + короткий хэш `basename` файла-источника (см. `identifier.listing_id` в конфиге).
+
+**Excel:**
+
+* один лист, freeze заголовка (A2), включён автофильтр;
+* числовые колонки — без символов валют.
+
+---
+
+## Этажи (мультиэтажность)
+
+Поддерживаются одиночные значения, **списки** и **диапазоны**:
+
+* списки: разделители `,`, `;`, `/`, `и`, `&`
+* диапазоны: `-` или `–`
+* удаляются служебные слова: `этаж`, `эт`, `э.`
+* спец-этажи: `подвал` (−1), `цоколь`, `мезонин`
+* **рендер:** численные этажи сортируются, подряд идущие объединяются в диапазоны, спец-строки остаются как есть, итог — соединяется `"; "`.
+
+**Примеры:**
+
+* `"1 и 2"` → `"1–2"`
+* `"1,3;5"` → `"1; 3; 5"`
+* `"цоколь/1-2"` → `"1–2; цоколь"`
+
+---
+
+## Нормализация и расчёты (основные правила)
+
+* **Числа/валюта:** убрать пробелы/валюту, `,` → `.`, всё хранить как `float`.
+* **Тип использования:** в канон `{офис, торговое, псн, склад}` (синонимы — см. конфиг).
+* **Отделка:** `{с отделкой, под отделку}` (синонимы — см. конфиг).
+* **Даты:** ISO `YYYY-MM-DD` или `"сейчас"`; `Q{1-4} YYYY` → конец квартала.
+* **VAT:** `{включен, не применяется}`; при пустом значении на листинге — наследование с уровня объекта.
+* **OPEX:** `opex_included` (`True/False`), `opex_year_per_sqm` — `float|None`.
+* **Годовая ставка аренды без НДС и OPEX (`rent_rate_year_sqm_base`):**
+
+  1. если есть прямая годовая ставка за м² — взять её;
+  2. иначе реконструировать из **месячной суммы**:
+
+     ```
+     base_month = rent_cost_month_per_room / (1 + vat_rate_if_included)
+     rent_rate_year_sqm_base = (base_month * 12) / area_sqm - (opex_year_per_sqm if not opex_included else 0)
+     ```
+
+  * пороги выбросов: см. `quality.outliers` в конфиге.
+* **Месячная «грязная» сумма (`rent_month_total_gross`):**
+
+  ```
+  gross_month = ((rent_rate_year_sqm_base + (0 if opex_included else opex_year_per_sqm or 0)) * area_sqm) * (1 + vat_rate) / 12
+  ```
+
+---
+
+## Конфигурация правил
+
+Все бизнес-правила хранятся в `app-ms/config/defaults.yml` и подгружаются при старте.
+Ключевые блоки:
+
+* `normalization` — синонимы, парсинг дат, этажей, VAT/OPEX.
+* `identifier.listing_id` — как строится `listing_id`.
+* `output.listing_columns` — **строгий порядок** колонок Excel.
+
+Изменение YAML не требует правки кода (при неизменной схеме).
+
+---
 
 ## Проверка
 
-- Быстрый smoke через API (возвращает Excel):
-  - `curl -X POST -F "file=@service_AQL/input/28.04.2025 -Таблица по свободным площадям.pdf" -F "chat_id=123" http://localhost:9000/process_file -o export.xlsx`
-- Офлайн агрегация JSON от AgentQL в Excel:
-  - `python app-ms/scripts/json_to_buildings_excel.py "service_AQL/input/28.04.2025 -Таблица по свободным площадям.json" --request-id demo_28042025`
-  - Результат: `data/results/demo_28042025/export.xlsx`
+**Через API (возврат Excel):**
 
-Описание колонок (фрагмент):
-- building_id: `obekt__str-1` для "Объект, стр. 1"
-- floors_covered_norm: "1–2" для листингов с этажами `1` и `1-2`
-- area_sqm_total: сумма площадей по всем листингам здания
-- listing_count: количество листингов в здании
+```bash
+curl -X POST \
+  -F "file=@service_AQL/input/28.04.2025 -Таблица по свободным площадям.pdf" \
+  http://localhost:8000/process_file -o listings.xlsx
+```
+
+**Офлайн (если добавлен скрипт преобразования JSON AgentQL → Excel):**
+
+```bash
+python app-ms/scripts/json_to_listings_excel.py "service_AQL/input/28.04.2025 -Таблица по свободным площадям.json" --request-id demo_28042025
+# Результат: data/results/demo_28042025/listings.xlsx
+```
+
+---
+
+## Изменения по сравнению с ранними версиями
+
+* ❗ **Отказ от агрегирования по зданиям.** Теперь **каждый листинг** — отдельная строка с уникальным `listing_id`.
+* Обновлены `defaults.yml`, генерация `building_name`/`building_id`, нормализация **мультиэтажности** и формулы дериваций.
+
+---
+
+## Тесты
+
+Рекомендуется прогонять:
+
+* `tests/unit/test_floors.py` — парсинг/рендер этажей;
+* `tests/unit/test_ids_helper.py` — генерация `listing_id`/`building_id`/`building_name`;
+* `tests/integration/test_flatten_listings.py` — сквозной сценарий: JSON → нормализация → Excel.

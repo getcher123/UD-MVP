@@ -1,6 +1,5 @@
-version: 2
+version: 3
 
-# === НОРМАЛИЗАЦИЯ БАЗОВЫХ ПОЛЕЙ (ЕДИНЫЕ ПРАВИЛА) ===
 normalization:
   numbers:
     strip_currency: true
@@ -9,7 +8,6 @@ normalization:
   area:
     unit: "sqm"
 
-  # Этажи: поддержка одиночных значений и множественных/диапазонов
   floor:
     drop_tokens: ["этаж", "эт", "э."]
     map_special:
@@ -18,14 +16,11 @@ normalization:
       mezzanine: ["мезонин"]
     multi:
       enabled: true
-      # Разделители множественных этажей
       split_separators: [",", ";", "/", " и ", "&"]
-      # Разделители диапазона (интервала): 1-2, 3–5
       range_separators: ["-", "–"]
-      # Рендер в выход: объединяем числа в интервалы, текстовые этажи оставляем как есть
       render:
         join_token: "; "
-        range_dash: "–"  # 1–3
+        range_dash: "–"
         sort_numeric_first: true
         uniq: true
 
@@ -59,132 +54,73 @@ normalization:
     default_included: false
     default_year_per_sqm: null
 
-# === ДОПУСКИ И КЛЮЧИ СШИВКИ ===
 matching:
   area_tolerance:
     abs_sqm: 2
     rel_pct: 2.0
+  # детерминированный join-key для листинга
+  join_key_listing:
+    parts: ["object_id", "building_token", "use_type_norm", "floors_norm", "area_1dp"]
 
-  # Ключ уровня ЗДАНИЯ: object_id + building_token
-  join_key_building:
-    parts: ["object_id", "building_token"]
-
-# === ДЕРИВАЦИИ (ВЫЧИСЛЯЕМЫЕ ВЕЛИЧИНЫ) НА УРОВНЕ ПОМЕЩЕНИЙ ===
 derivation:
   rent_rate_year_sqm_base:
-    # приоритет источников значения на ЛИСТИНГЕ
     priority: ["direct", "reconstruct_from_month"]
     reconstruct_from_month:
-      respect_vat: true     # делить помесячную сумму на (1+vat), если включён НДС
-      respect_opex: true    # вычитать opex_year_per_sqm, если OPEX отдельно
+      respect_vat: true
+      respect_opex: true
       vat_fallback: 0.20
       round_decimals: 2
-
   gross_month_total:
     round_decimals: 2
 
-# === АГРЕГАЦИЯ ДО УРОВНЯ ЗДАНИЯ ===
-aggregation:
-  building:
-    # Идентификаторы и имена
-    name:
-      compose: "{object_name}{suffix}"     # suffix = ", {building_token}" если он есть
-    id:
-      compose: "{object_id}__{building_token_slug}"  # если token отсутствует — просто object_id
-
-    # Наборы и моды
-    use_type_norm:
-      mode: true
-      set_join: ", "
-    fitout_condition_norm:
-      mode: true
-      set_join: ", "
-    rent_vat_norm:
-      mode: true
-    sale_vat_norm:
-      mode: true
-
-    # Площади и счётчики
-    area_sqm_total:
-      sum: true
-      decimals: 2
-    listing_count:
-      count: true
-
-    # Этажи: собираем все этажи по листингам и рендерим согласно normalization.floor.render
-    floors_covered_norm:
-      collect: true
-
-    # Даты: самая ранняя дата, «сейчас» приоритетнее любой конкретной
-    delivery_date_earliest:
-      earliest: true
-      now_precedes_dates: true
-
-    # Ставки аренды (база без НДС и OPEX): минимум/среднее/максимум
-    rent_rate_year_sqm_base:
-      min: true
-      avg: true
-      max: true
-      decimals: 2
-
-    # Помесячная «грязная» сумма (если нужна агрегированная витрина)
-    rent_month_total_gross:
-      avg: true
-      decimals: 2
-
-    # OPEX и Продажа
-    opex_year_per_sqm:
-      avg: true
-      decimals: 2
-    sale_price_per_sqm:
-      min: true
-      avg: true
-      max: true
-      decimals: 2
-
-    # Источники/качество
-    source_files:
-      unique_join: " | "
-    quality_flags:
-      join: ";"
-
-# === КАЧЕСТВО И ПРЕДЕЛЫ ===
 quality:
   outliers:
     rent_rate_year_sqm_base:
       min: 1000
       max: 200000
 
-# === ТЕКСТ ВОПРОСОВ НА УТОЧНЕНИЯ (если понадобятся позже) ===
 questions:
   fitout_condition: "Уточните отделку: «с отделкой» или «под отделку»?"
   delivery_date: "Уточните дату передачи (ISO YYYY-MM-DD) или «сейчас»."
   rent_rate: "Подтвердите НДС (включен/не применяется) и OPEX (включён/отдельно, руб/м²/год)."
   use_type: "Уточните тип использования: офис, торговое, псн или склад."
 
-# === КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (ТОЛЬКО УРОВЕНЬ ЗДАНИЯ) ===
+# Имя здания и ID строятся на уровне листинга (без агрегаций)
+naming:
+  building:
+    name_compose: "{object_name}{suffix}"       # suffix = ", {building_token}" если он есть
+    id_compose: "{object_id}__{building_token_slug}"  # если токена нет — просто object_id
+
+identifier:
+  # Уникальный и стабильный ID листинга (по нормализованным полям + короткий хэш)
+  listing_id:
+    compose_parts: ["object_id", "building_token_slug", "use_type_norm_slug", "floors_norm_slug", "area_1dp"]
+    hash_part: ["source_file_basename"]  # включаем имя источника для уникальности при похожих блоках
+    hash_len: 8
+    join_token: "__"
+
 output:
-  building_columns:
-    - building_id
-    - building_name
+  # КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (КАЖДОЕ ПОМЕЩЕНИЕ = 1 СТРОКА)
+  listing_columns:
+    - listing_id
     - object_id
     - object_name
-    - use_type_set_norm
-    - fitout_condition_mode
-    - delivery_date_earliest
-    - floors_covered_norm
-    - area_sqm_total
-    - listing_count
-    - rent_rate_year_sqm_base_min
-    - rent_rate_year_sqm_base_avg
-    - rent_rate_year_sqm_base_max
-    - rent_vat_norm_mode
-    - opex_year_per_sqm_avg
-    - rent_month_total_gross_avg
-    - sale_price_per_sqm_min
-    - sale_price_per_sqm_avg
-    - sale_price_per_sqm_max
-    - sale_vat_norm_mode
-    - source_files
+    - building_id
+    - building_name
+    - use_type_norm
+    - area_sqm
+    - divisible_from_sqm
+    - floors_norm
+    - market_type
+    - fitout_condition_norm
+    - delivery_date_norm
+    - rent_rate_year_sqm_base
+    - rent_vat_norm
+    - opex_year_per_sqm
+    - opex_included
+    - rent_month_total_gross
+    - sale_price_per_sqm
+    - sale_vat_norm
+    - source_file
     - request_id
     - quality_flags

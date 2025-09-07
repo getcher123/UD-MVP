@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from functools import lru_cache
 from typing import List, Optional
 
@@ -58,9 +59,13 @@ def get_settings() -> Settings:
     except ValueError:
         max_file_mb = 20
 
+    # Build a robust default path for the query file relative to this package
+    pkg_root = Path(__file__).resolve().parents[1]
+    default_query_path_fallback = str(pkg_root / "queries" / "default_query.txt")
+
     return Settings(
         AGENTQL_API_KEY=os.getenv("AGENTQL_API_KEY"),
-        DEFAULT_QUERY_PATH=os.getenv("DEFAULT_QUERY_PATH", "app-ms/queries/default_query.txt"),
+        DEFAULT_QUERY_PATH=os.getenv("DEFAULT_QUERY_PATH", default_query_path_fallback),
         RULES_PATH=os.getenv("RULES_PATH", "app-ms/config/defaults.yml"),
         MAX_FILE_MB=max_file_mb,
         ALLOW_TYPES=allow_types,

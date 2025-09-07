@@ -1,47 +1,87 @@
 from __future__ import annotations
 
 """
-Floor parsing and rendering helpers.
-
-The functions operate on a small config dict fragment, typically taken from
-`normalization.floor` section of defaults.yml. They are side‑effect free and
-contain doctests for core scenarios.
-
-Examples (doctest):
-
->>> cfg = {
-...     "floor": {
-...         "drop_tokens": ["этаж", "эт", "э."],
-...         "map_special": {
-...             "basement": ["подвал", "-1"],
-...             "socle": ["цоколь"],
-...             "mezzanine": ["мезонин"],
-...         },
-...         "multi": {
-...             "enabled": True,
-...             "split_separators": [",", ";", "/", " и ", "&"],
-...             "range_separators": ["-", "–"],
-...             "render": {"join_token": "; ", "range_dash": "–", "sort_numeric_first": True, "uniq": True},
-...         },
-...     }
-... }
->>> render_floors(parse_floors("1 и 2", cfg), cfg)
-'1–2'
->>> render_floors(parse_floors("1,3;5", cfg), cfg)
-'1; 3; 5'
->>> render_floors(parse_floors("цоколь/1-2", cfg), cfg)
-'1–2; цоколь'
+Normalization helpers for listing data: numbers, enums, VAT, floors, and dates,
+plus floor parsing/rendering utilities.
 """
 
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Tuple
+
+from services.ids_helper import building_token
+from utils.dates import normalize_delivery_date as _normalize_delivery_date
 
 
 StrOrInt = int | str
 
 
+# --------- Generic helpers ---------
+
+def to_float(val: Any) -> float | None:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val)
+    s = s.replace("₽", "").replace("$", "").replace("руб", "").replace("р.", "").replace("р", "")
+    s = s.replace("м²", "").replace("/м2", "").replace("/м²", "").replace("/м^2", "").replace("/m2", "")
+    s = s.replace(" ", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def map_to_canon(value: Any, rules: dict, section: str) -> str | None:
+    if not value:
+        return None
+    t = str(value).strip().lower()
+    sec = rules.get("normalization", {}).get(section, {}) or {}
+    for canon in sec.get("canon", []) or []:
+        if t == str(canon).lower():
+            return str(canon)
+    for canon, vals in (sec.get("synonyms", {}) or {}).items():
+        for v in vals or []:
+            if t == str(v).lower():
+                return str(canon)
+    return None
+
+
+def normalize_vat(value: Any, rules: dict) -> str | None:
+    if value is None:
+        return None
+    t = str(value).strip().lower()
+    if "включ" in t:
+        return "включен"
+    not_applied = (rules.get("normalization", {}).get("vat", {}) or {}).get("treat_not_applied", [])
+    for token in not_applied or []:
+        if token in t:
+            return "не применяется"
+    if t in {"не применяется", "без ндс", "усн"}:
+        return "не применяется"
+    return None
+
+
+def boolish(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    t = str(value).strip().lower()
+    if t in {"1", "true", "yes", "y", "да", "+"}:
+        return True
+    if t in {"0", "false", "no", "n", "нет", "-"}:
+        return False
+    return None
+
+
+def normalize_delivery_date(value: Any) -> str | None:
+    return _normalize_delivery_date(str(value)) if value is not None else None
+
+
+# --------- Floors parsing/rendering ---------
+
 def _floor_cfg(cfg: dict) -> dict:
-    """Accept either the root normalization config or the `floor` slice."""
     return cfg.get("floor", cfg)
 
 
@@ -57,11 +97,8 @@ def _get(cfg: dict, path: list[str], default: Any) -> Any:
 def _tokenize(value: str, cfg: dict) -> list[str]:
     fc = _floor_cfg(cfg)
     s = value.strip().lower()
-    # drop tokens like "этаж", "эт", "э."
     for tok in _get(fc, ["drop_tokens"], ["этаж", "эт", "э."]):
         s = s.replace(tok.lower(), " ")
-
-    # split by multi separators
     seps: list[str] = _get(fc, ["multi", "split_separators"], [",", ";", "/", " и ", "&"])  # type: ignore[assignment]
     for sep in seps:
         s = s.replace(sep, "|")
@@ -71,67 +108,45 @@ def _tokenize(value: str, cfg: dict) -> list[str]:
 
 def _expand_range(token: str, range_seps: Iterable[str]) -> list[int] | None:
     for d in range_seps:
-        # Strictly two integers separated by dash char
         m = re.fullmatch(rf"\s*(-?\d+)\s*{re.escape(d)}\s*(-?\d+)\s*", token)
         if m:
             a, b = int(m.group(1)), int(m.group(2))
-            if a <= b:
-                return list(range(a, b + 1))
-            else:
-                return list(range(b, a + 1))
+            return list(range(min(a, b), max(a, b) + 1))
     return None
 
 
 def parse_floors(value: Any, cfg: dict) -> list[StrOrInt]:
-    """
-    Parse a value into a list of floors represented by ints or special strings
-    ("цоколь", "мезонин", "подвал"). Supports multiple tokens and ranges.
-    Removes tokens like "этаж"/"эт"/"э.".
-    """
     fc = _floor_cfg(cfg)
     range_seps = _get(fc, ["multi", "range_separators"], ["-", "–"])  # type: ignore[assignment]
     specials = _get(fc, ["map_special"], {}) or {}
     special_values: dict[str, str] = {}
-    # Flatten mapping to canonical russian strings
     for canon, vals in specials.items():
-        canon_ru = {
-            "basement": "подвал",
-            "socle": "цоколь",
-            "mezzanine": "мезонин",
-        }.get(canon, canon)
+        canon_ru = {"basement": "подвал", "socle": "цоколь", "mezzanine": "мезонин"}.get(canon, canon)
         for v in vals or []:
             special_values[str(v).lower()] = canon_ru
 
     out: list[StrOrInt] = []
 
     def handle_token(tok: str) -> None:
-        # Ranges first
         expanded = _expand_range(tok, range_seps)
         if expanded is not None:
             for n in expanded:
                 if n == -1 and "-1" in special_values:
-                    out.append(special_values["-1"])  # "подвал"
+                    out.append(special_values["-1"])  # подвал
                 else:
                     out.append(n)
             return
-
-        # Pure number
         if re.fullmatch(r"-?\d+", tok):
             n = int(tok)
             if n == -1 and "-1" in special_values:
-                out.append(special_values["-1"])  # "подвал"
+                out.append(special_values["-1"])  # подвал
             else:
                 out.append(n)
             return
-
-        # Special textual floors
         if tok in special_values:
             out.append(special_values[tok])
             return
 
-        # Otherwise ignore unrecognized textual tokens
-
-    # Dispatch based on type
     if value is None:
         return []
     if isinstance(value, (list, tuple, set)):
@@ -139,13 +154,10 @@ def parse_floors(value: Any, cfg: dict) -> list[StrOrInt]:
             for t in _tokenize(str(v), cfg):
                 handle_token(t)
         return out
-    if isinstance(value, (int,)):
+    if isinstance(value, int):
         n = int(value)
-        if n == -1 and "-1" in special_values:
-            return [special_values["-1"]]
-        return [n]
+        return [special_values["-1"]] if n == -1 and "-1" in special_values else [n]
 
-    # Fallback: parse as string
     for t in _tokenize(str(value), cfg):
         handle_token(t)
     return out
@@ -166,18 +178,11 @@ def _collapse_consecutive(nums: list[int]) -> list[str]:
     ranges.append((start, prev))
     out: list[str] = []
     for a, b in ranges:
-        if a == b:
-            out.append(str(a))
-        else:
-            out.append(f"{a}-@@{b}")  # temporary token; dash replaced later
+        out.append(str(a) if a == b else f"{a}-@@{b}")
     return out
 
 
 def render_floors(floors: list[StrOrInt], cfg: dict) -> str:
-    """
-    Sort numeric floors first, collapse consecutive integers into ranges, ensure
-    uniqueness, then join pieces using join_token. Special text floors are kept.
-    """
     fc = _floor_cfg(cfg)
     render = _get(fc, ["multi", "render"], {})
     join_token: str = render.get("join_token", "; ")
@@ -188,27 +193,76 @@ def render_floors(floors: list[StrOrInt], cfg: dict) -> str:
     nums: list[int] = []
     texts: list[str] = []
     for f in floors:
-        if isinstance(f, int):
-            nums.append(f)
-        else:
-            texts.append(str(f))
+        (nums if isinstance(f, int) else texts).append(f if isinstance(f, int) else str(f))
 
-    # Prepare numeric part
     num_parts = _collapse_consecutive(sorted(set(nums) if uniq else nums))
-    # Prepare textual part (preserve first occurrence order when uniq)
     if uniq:
         seen: set[str] = set()
-        tparts: list[str] = []
+        ordered: list[str] = []
         for t in texts:
             if t not in seen:
-                tparts.append(t)
+                ordered.append(t)
                 seen.add(t)
-        texts = tparts
+        texts = ordered
 
     pieces = num_parts + texts if sort_numeric_first else texts + num_parts
-    result = join_token.join(pieces).replace("-@@", range_dash)
-    return result
+    return join_token.join(pieces).replace("-@@", range_dash)
 
 
-__all__ = ["parse_floors", "render_floors"]
+# --------- Listing core normalization ---------
 
+def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
+    """
+    Normalize a single listing record (no IDs/derivations):
+    Returns keys: object_name, building_raw, building_token, use_type_norm,
+    area_sqm, divisible_from_sqm, floors_norm, market_type, fitout_condition_norm,
+    delivery_date_norm, rent_vat_norm, sale_vat_norm, opex_included,
+    opex_year_per_sqm, sale_price_per_sqm, rent_rate (if present).
+    """
+    obj_name = parent.get("object_name") if isinstance(parent, dict) else None
+    b_raw = parent.get("building_name") if isinstance(parent, dict) else None
+    floor_cfg = rules.get("normalization", {})
+
+    use_norm = map_to_canon(src.get("use_type"), rules, "use_type")
+    fit_norm = map_to_canon(src.get("fitout_condition"), rules, "fitout_condition")
+    if fit_norm is None and src.get("fitout_condition"):
+        # heuristic: any mention of "отдел" w/ positive words → "с отделкой"
+        t = str(src.get("fitout_condition")).lower()
+        if "отдел" in t and ("с " in t or "есть" in t or "готово к въезду" in t):
+            fit_norm = "с отделкой"
+        elif "отдел" in t:
+            fit_norm = "под отделку"
+
+    floors = parse_floors(src.get("floor"), floor_cfg)
+    floors_norm = render_floors(floors, floor_cfg)
+
+    return {
+        "object_name": obj_name,
+        "building_raw": b_raw,
+        "building_token": building_token(b_raw),
+        "use_type_norm": use_norm,
+        "area_sqm": to_float(src.get("area_sqm")),
+        "divisible_from_sqm": to_float(src.get("divisible_from_sqm")),
+        "floors_norm": floors_norm,
+        "market_type": src.get("market_type"),
+        "fitout_condition_norm": fit_norm,
+        "delivery_date_norm": normalize_delivery_date(src.get("delivery_date")),
+        "rent_vat_norm": normalize_vat(src.get("rent_vat"), rules),
+        "sale_vat_norm": normalize_vat(src.get("sale_vat"), rules),
+        "opex_included": boolish(src.get("opex_included")),
+        "opex_year_per_sqm": to_float(src.get("opex_year_per_sqm")),
+        "sale_price_per_sqm": to_float(src.get("sale_price_per_sqm")),
+        "rent_rate": to_float(src.get("rent_rate")),
+    }
+
+
+__all__ = [
+    "to_float",
+    "map_to_canon",
+    "normalize_vat",
+    "boolish",
+    "parse_floors",
+    "render_floors",
+    "normalize_delivery_date",
+    "normalize_listing_core",
+]

@@ -23,6 +23,12 @@ def build_xlsx(rows: list[dict], columns: Sequence[str] | None = None) -> bytes:
 
     rows = list(rows or [])
     if not rows:
+        headers = list(columns) if columns is not None else []
+        if headers:
+            ws.append(headers)
+            # Freeze panes and add autofilter even if no data rows
+            ws.freeze_panes = "A2"
+            ws.auto_filter.ref = ws.dimensions
         buf = BytesIO()
         wb.save(buf)
         return buf.getvalue()
