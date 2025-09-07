@@ -1,0 +1,190 @@
+version: 2
+
+# === НОРМАЛИЗАЦИЯ БАЗОВЫХ ПОЛЕЙ (ЕДИНЫЕ ПРАВИЛА) ===
+normalization:
+  numbers:
+    strip_currency: true
+    decimal_comma_to_dot: true
+
+  area:
+    unit: "sqm"
+
+  # Этажи: поддержка одиночных значений и множественных/диапазонов
+  floor:
+    drop_tokens: ["этаж", "эт", "э."]
+    map_special:
+      basement: ["подвал", "-1"]
+      socle: ["цоколь"]
+      mezzanine: ["мезонин"]
+    multi:
+      enabled: true
+      # Разделители множественных этажей
+      split_separators: [",", ";", "/", " и ", "&"]
+      # Разделители диапазона (интервала): 1-2, 3–5
+      range_separators: ["-", "–"]
+      # Рендер в выход: объединяем числа в интервалы, текстовые этажи оставляем как есть
+      render:
+        join_token: "; "
+        range_dash: "–"  # 1–3
+        sort_numeric_first: true
+        uniq: true
+
+  use_type:
+    canon: ["офис", "торговое", "псн", "склад"]
+    synonyms:
+      офис: ["office", "open space", "кабинетная", "смешанная", "офіс"]
+      торговое: ["retail", "street-retail", "торговля", "магазин"]
+      псн: ["psn", "нежилое", "vip", "кальянная"]
+      склад: ["storage", "warehouse", "гараж"]
+
+  fitout_condition:
+    canon: ["с отделкой", "под отделку"]
+    synonyms:
+      "с отделкой": ["готово к въезду", "с мебелью", "есть отделка"]
+      "под отделку": ["white box", "готово к отделке"]
+
+  dates:
+    ru_months:
+      января: 01; февраля: 02; марта: 03; апреля: 04; мая: 05; июня: 06
+      июля: 07; августа: 08; сентября: 09; октября: 10; ноября: 11; декабря: 12
+    quarters:
+      Q1: "03-31"; Q2: "06-30"; Q3: "09-30"; Q4: "12-31"
+    now_tokens: ["сейчас", "свободно", "готово к въезду"]
+
+  vat:
+    treat_not_applied: ["усн", "упрощенка", "ндс 5%"]
+    default_rate: 0.20
+
+  opex:
+    default_included: false
+    default_year_per_sqm: null
+
+# === ДОПУСКИ И КЛЮЧИ СШИВКИ ===
+matching:
+  area_tolerance:
+    abs_sqm: 2
+    rel_pct: 2.0
+
+  # Ключ уровня ЗДАНИЯ: object_id + building_token
+  join_key_building:
+    parts: ["object_id", "building_token"]
+
+# === ДЕРИВАЦИИ (ВЫЧИСЛЯЕМЫЕ ВЕЛИЧИНЫ) НА УРОВНЕ ПОМЕЩЕНИЙ ===
+derivation:
+  rent_rate_year_sqm_base:
+    # приоритет источников значения на ЛИСТИНГЕ
+    priority: ["direct", "reconstruct_from_month"]
+    reconstruct_from_month:
+      respect_vat: true     # делить помесячную сумму на (1+vat), если включён НДС
+      respect_opex: true    # вычитать opex_year_per_sqm, если OPEX отдельно
+      vat_fallback: 0.20
+      round_decimals: 2
+
+  gross_month_total:
+    round_decimals: 2
+
+# === АГРЕГАЦИЯ ДО УРОВНЯ ЗДАНИЯ ===
+aggregation:
+  building:
+    # Идентификаторы и имена
+    name:
+      compose: "{object_name}{suffix}"     # suffix = ", {building_token}" если он есть
+    id:
+      compose: "{object_id}__{building_token_slug}"  # если token отсутствует — просто object_id
+
+    # Наборы и моды
+    use_type_norm:
+      mode: true
+      set_join: ", "
+    fitout_condition_norm:
+      mode: true
+      set_join: ", "
+    rent_vat_norm:
+      mode: true
+    sale_vat_norm:
+      mode: true
+
+    # Площади и счётчики
+    area_sqm_total:
+      sum: true
+      decimals: 2
+    listing_count:
+      count: true
+
+    # Этажи: собираем все этажи по листингам и рендерим согласно normalization.floor.render
+    floors_covered_norm:
+      collect: true
+
+    # Даты: самая ранняя дата, «сейчас» приоритетнее любой конкретной
+    delivery_date_earliest:
+      earliest: true
+      now_precedes_dates: true
+
+    # Ставки аренды (база без НДС и OPEX): минимум/среднее/максимум
+    rent_rate_year_sqm_base:
+      min: true
+      avg: true
+      max: true
+      decimals: 2
+
+    # Помесячная «грязная» сумма (если нужна агрегированная витрина)
+    rent_month_total_gross:
+      avg: true
+      decimals: 2
+
+    # OPEX и Продажа
+    opex_year_per_sqm:
+      avg: true
+      decimals: 2
+    sale_price_per_sqm:
+      min: true
+      avg: true
+      max: true
+      decimals: 2
+
+    # Источники/качество
+    source_files:
+      unique_join: " | "
+    quality_flags:
+      join: ";"
+
+# === КАЧЕСТВО И ПРЕДЕЛЫ ===
+quality:
+  outliers:
+    rent_rate_year_sqm_base:
+      min: 1000
+      max: 200000
+
+# === ТЕКСТ ВОПРОСОВ НА УТОЧНЕНИЯ (если понадобятся позже) ===
+questions:
+  fitout_condition: "Уточните отделку: «с отделкой» или «под отделку»?"
+  delivery_date: "Уточните дату передачи (ISO YYYY-MM-DD) или «сейчас»."
+  rent_rate: "Подтвердите НДС (включен/не применяется) и OPEX (включён/отдельно, руб/м²/год)."
+  use_type: "Уточните тип использования: офис, торговое, псн или склад."
+
+# === КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (ТОЛЬКО УРОВЕНЬ ЗДАНИЯ) ===
+output:
+  building_columns:
+    - building_id
+    - building_name
+    - object_id
+    - object_name
+    - use_type_set_norm
+    - fitout_condition_mode
+    - delivery_date_earliest
+    - floors_covered_norm
+    - area_sqm_total
+    - listing_count
+    - rent_rate_year_sqm_base_min
+    - rent_rate_year_sqm_base_avg
+    - rent_rate_year_sqm_base_max
+    - rent_vat_norm_mode
+    - opex_year_per_sqm_avg
+    - rent_month_total_gross_avg
+    - sale_price_per_sqm_min
+    - sale_price_per_sqm_avg
+    - sale_price_per_sqm_max
+    - sale_vat_norm_mode
+    - source_files
+    - request_id
+    - quality_flags

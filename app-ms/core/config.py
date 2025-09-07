@@ -10,6 +10,7 @@ from typing import List, Optional
 class Settings:
     AGENTQL_API_KEY: Optional[str] = None
     DEFAULT_QUERY_PATH: str = "app-ms/queries/default_query.txt"
+    RULES_PATH: str = "app-ms/config/defaults.yml"
     MAX_FILE_MB: int = 20
     ALLOW_TYPES: List[str] = field(default_factory=lambda: [
         "pdf",
@@ -60,6 +61,7 @@ def get_settings() -> Settings:
     return Settings(
         AGENTQL_API_KEY=os.getenv("AGENTQL_API_KEY"),
         DEFAULT_QUERY_PATH=os.getenv("DEFAULT_QUERY_PATH", "app-ms/queries/default_query.txt"),
+        RULES_PATH=os.getenv("RULES_PATH", "app-ms/config/defaults.yml"),
         MAX_FILE_MB=max_file_mb,
         ALLOW_TYPES=allow_types,
         PDF_TMP_DIR=os.getenv("PDF_TMP_DIR", "/tmp/pdf"),
