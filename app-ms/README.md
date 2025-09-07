@@ -218,3 +218,34 @@ python app-ms/scripts/json_to_listings_excel.py "service_AQL/input/28.04.2025 -�
 * `tests/unit/test_floors.py` — парсинг/рендер этажей;
 * `tests/unit/test_ids_helper.py` — генерация `listing_id`/`building_id`/`building_name`;
 * `tests/integration/test_flatten_listings.py` — сквозной сценарий: JSON → нормализация → Excel.
+
+---
+
+## Docker
+
+Сборка образа (из корня репозитория):
+
+```powershell
+docker build -t ud-ms:latest -f app-ms/Dockerfile .
+```
+
+Запуск контейнера с пробросом порта и тома для результатов:
+
+```powershell
+New-Item -ItemType Directory -Force .\data | Out-Null
+docker run --rm -p 8000:8000 -v "${PWD}\data:/data" --env-file .env ud-ms:latest
+```
+
+Проверка здоровья и загрузка файла:
+
+```powershell
+Invoke-WebRequest http://localhost:8000/healthz | Select-Object -ExpandProperty Content
+curl.exe -F "file=@service_AQL\input\28.04.2025 -Таблица по свободным площадям.pdf" http://localhost:8000/process_file -o listings.xlsx
+```
+
+Замечания:
+
+- По умолчанию результаты пишутся в `/data/results` внутри контейнера; за счёт `-v ${PWD}\data:/data` они доступны на хосте в `./data/results`.
+- Для Windows PowerShell используйте `curl.exe` (а не алиас `curl`).
+- Если используется корпоративный прокси, передавайте его в сборку: `--build-arg HTTP_PROXY=... --build-arg HTTPS_PROXY=...`.
+- Для стабильной сборки рекомендуется увеличить память Docker Desktop до 4–6 GB (LibreOffice тянет зависимости).
