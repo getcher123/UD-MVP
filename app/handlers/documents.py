@@ -7,12 +7,14 @@ from pathlib import Path
 
 from aiogram import Router, types, F
 from aiogram.types import BufferedInputFile
+import httpx
 
 from ..utils.files import safe_filename, max_size_bytes
 from ..services.ms_client import process_file
 
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 def _uploads_dir() -> Path:
@@ -47,7 +49,7 @@ async def on_document(message: types.Message) -> None:
 
     size_limit = max_size_bytes()
     if (doc.file_size or 0) > size_limit:
-        await message.answer(f"Файл слишком большой. Максимум {size_limit // (1024*1024)} МБ")
+        await message.answer("Файл слишком большой (максимум 20 МБ)")
         return
 
     # Prepare destination path
@@ -56,21 +58,37 @@ async def on_document(message: types.Message) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     # Download file to disk
+    logger.info(
+        "[documents] Получен файл: chat_id=%s name=%s size=%sB",
+        getattr(message.chat, "id", "?"),
+        doc.file_name,
+        doc.file_size,
+    )
     await message.bot.download(doc, destination=dest)
 
     await message.answer("Файл получен, обрабатываю…")
 
     try:
+        logger.info("[documents] Отправляю файл в МС: path=%s", dest)
         xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
+        logger.info("[documents] Получен ответ от МС: out_name=%s size=%sB", out_name, len(xlsx_bytes))
         buf = BufferedInputFile(xlsx_bytes, filename=out_name)
         await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
-    except Exception:  # keep bot stable on processing errors
-        logging.exception("Processing failed for %s", dest)
+    except httpx.HTTPStatusError as e:
+        # Distinguish 5xx as "try later"; still respond the same as per requirements
+        logger.exception("[documents] МС вернул ошибку %s для %s", getattr(e.response, "status_code", "?"), dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
+    except httpx.HTTPError:
+        logger.exception("[documents] Сетевая ошибка при обращении к МС для %s", dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
+    except Exception:
+        logger.exception("[documents] Неожиданная ошибка обработки для %s", dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
     finally:
         try:
             dest.unlink(missing_ok=True)
         except Exception:
-            logging.exception("Failed to remove %s", dest)
+            logger.exception("[documents] Не удалось удалить временный файл %s", dest)
 
 
 @router.message(F.photo)
@@ -86,28 +104,43 @@ async def on_photo(message: types.Message) -> None:
 
     size_limit = max_size_bytes()
     if (photo.file_size or 0) > size_limit:
-        await message.answer(f"Файл слишком большой. Максимум {size_limit // (1024*1024)} МБ")
+        await message.answer("Файл слишком большой (максимум 20 МБ)")
         return
 
     filename = safe_filename(f"photo_{photo.file_unique_id}.jpg")
     dest = _uploads_dir() / filename
     dest.parent.mkdir(parents=True, exist_ok=True)
 
+    logger.info(
+        "[documents] Получена фотография: chat_id=%s name=%s size=%sB",
+        getattr(message.chat, "id", "?"),
+        filename,
+        photo.file_size,
+    )
     await message.bot.download(photo, destination=dest)
 
     await message.answer("Файл получен, обрабатываю…")
 
     try:
+        logger.info("[documents] Отправляю фото в МС: path=%s", dest)
         xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
+        logger.info("[documents] Получен ответ от МС: out_name=%s size=%sB", out_name, len(xlsx_bytes))
         buf = BufferedInputFile(xlsx_bytes, filename=out_name)
         await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
+    except httpx.HTTPStatusError as e:
+        logger.exception("[documents] МС вернул ошибку %s для %s", getattr(e.response, "status_code", "?"), dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
+    except httpx.HTTPError:
+        logger.exception("[documents] Сетевая ошибка при обращении к МС для %s", dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
     except Exception:
-        logging.exception("Processing failed for %s", dest)
+        logger.exception("[documents] Неожиданная ошибка обработки для %s", dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
     finally:
         try:
             dest.unlink(missing_ok=True)
         except Exception:
-            logging.exception("Failed to remove %s", dest)
+            logger.exception("[documents] Не удалось удалить временный файл %s", dest)
 
 
 @router.message(F.audio)
