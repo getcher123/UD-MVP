@@ -5,6 +5,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api.middleware import install_request_logging
+from api.routes_health import router as health_router
+from api.routes_process import router as process_router
 from core.config import get_settings
 from core.ids import make_request_id
 from core.errors import ServiceError, ErrorCode
@@ -16,6 +18,8 @@ app = FastAPI(title="MS Phase 1 Test")
 
 setup_logging(settings.LOG_LEVEL)
 install_request_logging(app)
+app.include_router(health_router)
+app.include_router(process_router)
 
 
 @app.get("/healthz")
