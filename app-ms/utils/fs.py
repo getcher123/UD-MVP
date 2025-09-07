@@ -49,9 +49,8 @@ def _sanitize_base(base: str) -> str:
         out.append("___" if run_len >= 3 else "_")
 
     s = "".join(out)
-    # normalize underscores: 4+ -> 3, 2 -> 1
-    s = re.sub(r"_{3,}", "___", s)
-    s = re.sub(r"__", "_", s)
+    # normalize underscores: 4+ -> 3; keep 2 as-is to preserve separation when intended
+    s = re.sub(r"_{4,}", "___", s)
     return s or "_"
 
 
