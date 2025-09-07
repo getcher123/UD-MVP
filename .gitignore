@@ -15,7 +15,7 @@ __pycache__/
 
 # Виртуальные окружения
 .venv/
-.venv2/
+.venv*/
 env/
 venv/
 *.env
@@ -70,3 +70,7 @@ conf.yml
 config.json
 credentials.json
 data
+
+# agentQL service
+/service_AQL/input
+/service_AQL/ground_truth
