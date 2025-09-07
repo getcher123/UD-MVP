@@ -15,6 +15,7 @@ __pycache__/
 
 # Виртуальные окружения
 .venv/
+.venv2/
 env/
 venv/
 *.env
@@ -68,3 +69,4 @@ config.yml
 conf.yml
 config.json
 credentials.json
+data
