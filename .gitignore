@@ -69,3 +69,4 @@ config.yml
 conf.yml
 config.json
 credentials.json
+data
