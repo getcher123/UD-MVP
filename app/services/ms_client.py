@@ -26,7 +26,7 @@ async def process_file(file_path: Path, chat_id: str) -> tuple[bytes, str]:
 
     url = f"{base_url}/process_file"
 
-    timeout = httpx.Timeout(connect=60.0, read=120.0)
+    timeout = httpx.Timeout(120.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         with file_path.open("rb") as f:
             files = {"file": (file_path.name, f, "application/octet-stream")}
