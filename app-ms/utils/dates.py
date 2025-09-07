@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
 import calendar
+from datetime import date, datetime, timezone
 from typing import Optional
 
+
+# --- Existing helpers kept for compatibility ---
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -13,7 +15,6 @@ def now_iso() -> str:
 def end_of_quarter(year: int, quarter: int) -> date:
     if quarter not in (1, 2, 3, 4):
         raise ValueError("quarter must be 1..4")
-    # End months: Mar, Jun, Sep, Dec
     last_month = quarter * 3
     last_day = calendar.monthrange(year, last_month)[1]
     return date(year, last_month, last_day)
@@ -58,23 +59,192 @@ def parse_date_loose(s: str) -> Optional[date]:
 
 
 def parse_quarter(s: str) -> Optional[str]:
-    """Parses quarter-year expressions and returns ISO date for end of quarter."""
+    """Parses quarter-year expressions and returns ISO date for end of quarter.
+
+    Backward compatible wrapper that returns an ISO string.
+    """
     d = parse_quarter_year(s)
-    return d.isoformat() if d else None
+    if d:
+        return d.isoformat()
+    # Extended support: roman numerals and explicit 'квартал'
+    d2 = _parse_quarter_date_extended(s)
+    return d2.isoformat() if d2 else None
 
 
 def to_iso_date(s: str) -> Optional[str]:
     if not s:
         return None
-    d = parse_quarter_year(s) or parse_date_loose(s)
+    d = parse_quarter_year(s) or parse_date_loose(s) or _parse_quarter_date_extended(s)
     return d.isoformat() if d else s
 
 
+# --- New requirements for MS delivery date normalization ---
+
+RU_MONTHS = {
+    "января": 1,
+    "февраля": 2,
+    "марта": 3,
+    "апреля": 4,
+    "мая": 5,
+    "июня": 6,
+    "июля": 7,
+    "августа": 8,
+    "сентября": 9,
+    "октября": 10,
+    "ноября": 11,
+    "декабря": 12,
+}
+
+NOW_TOKENS = {"сейчас", "свободно", "готово к въезду"}
+
+
+def quarter_end(year: int, quarter: int) -> date:
+    """
+    Возвращает дату последнего дня квартала.
+    >>> quarter_end(2025, 1).isoformat()
+    '2025-03-31'
+    >>> quarter_end(2025, 4).isoformat()
+    '2025-12-31'
+    """
+    return end_of_quarter(year, quarter)
+
+
+def parse_ddmmyyyy(text: str) -> Optional[date]:
+    """
+    Поддерживает DD.MM.YYYY и DD/MM/YYYY.
+    >>> parse_ddmmyyyy("12.07.2025").isoformat()
+    '2025-07-12'
+    >>> parse_ddmmyyyy("3/1/2026").isoformat()
+    '2026-01-03'
+    """
+    t = text.strip().lower()
+    m = re.match(r"^(?P<d>\d{1,2})[./](?P<m>\d{1,2})[./](?P<y>\d{4})$", t)
+    if not m:
+        return None
+    d = int(m.group("d"))
+    mth = int(m.group("m"))
+    y = int(m.group("y"))
+    try:
+        return date(y, mth, d)
+    except ValueError:
+        return None
+
+
+def parse_ru_textual_date(text: str) -> Optional[date]:
+    """
+    Парсит даты вида '12 июля 2025', нечувствительно к регистру и доп. пробелам.
+    >>> parse_ru_textual_date("  1  марта 2024 ")
+    datetime.date(2024, 3, 1)
+    """
+    t = re.sub(r"\s+", " ", text.strip().lower())
+    m = re.match(r"^(?P<d>\d{1,2})\s+(?P<mon>[а-яё]+)\s+(?P<y>\d{4})$", t)
+    if not m:
+        return None
+    mon_name = m.group("mon")
+    mon = RU_MONTHS.get(mon_name)
+    if not mon:
+        return None
+    d = int(m.group("d"))
+    y = int(m.group("y"))
+    try:
+        return date(y, mon, d)
+    except ValueError:
+        return None
+
+
+_ROMAN = {"i": 1, "ii": 2, "iii": 3, "iv": 4}
+
+
+def _parse_quarter_date_extended(text: str) -> Optional[date]:
+    """Extended quarter parser supporting roman numerals and 'квартал' tokens."""
+    t = re.sub(r"\s+", " ", text.strip().lower())
+    # Q1 2025, q2-2026
+    m = re.match(r"^q\s*(?P<q>[1-4])\s*[- ]\s*(?P<y>\d{4})$", t)
+    if m:
+        return end_of_quarter(int(m.group("y")), int(m.group("q")))
+    # 1 кв 2026 or 1кв 2026
+    m = re.match(r"^(?P<q>[1-4])\s*кв\.?\s*(?P<y>\d{4})$", t)
+    if m:
+        return end_of_quarter(int(m.group("y")), int(m.group("q")))
+    m = re.match(r"^(?P<q>[1-4])\s*квартал\s*(?P<y>\d{4})$", t)
+    if m:
+        return end_of_quarter(int(m.group("y")), int(m.group("q")))
+    # Roman numerals: I квартал 2026, III квартал 2026
+    m = re.match(r"^(?P<r>i{1,3}|iv)\s*квартал\s*(?P<y>\d{4})$", t)
+    if m:
+        q = _ROMAN.get(m.group("r"))
+        if q:
+            return end_of_quarter(int(m.group("y")), q)
+    return None
+
+
+def parse_quarter(text: str) -> Optional[str]:  # type: ignore[override]
+    # Overridden above for compatibility; keep alias for clarity
+    return to_quarter_end_iso(text)
+
+
+def to_quarter_end_iso(text: str) -> Optional[str]:
+    d = parse_quarter_year(text) or _parse_quarter_date_extended(text)
+    return d.isoformat() if d else None
+
+
+def normalize_delivery_date(text: Optional[str]) -> Optional[str]:
+    """
+    Главная функция нормализации:
+    - None/пусто -> None
+    - now-токены -> 'сейчас'
+    - dd.mm.yyyy / dd/mm/yyyy -> ISO
+    - '12 июля 2025' -> ISO
+    - 'Q3 2026' / '3 кв 2026' / 'III квартал 2026' -> конец квартала (ISO)
+    иначе -> None
+    >>> normalize_delivery_date("свободно")
+    'сейчас'
+    >>> normalize_delivery_date("16/5/2025")
+    '2025-05-16'
+    >>> normalize_delivery_date("III квартал 2026")
+    '2026-09-30'
+    """
+    if text is None:
+        return None
+    t = text.strip()
+    if not t:
+        return None
+    low = t.lower()
+    if low in NOW_TOKENS:
+        return "сейчас"
+
+    # explicit numeric formats
+    d = parse_ddmmyyyy(low)
+    if d:
+        return d.isoformat()
+
+    # textual russian date
+    d = parse_ru_textual_date(low)
+    if d:
+        return d.isoformat()
+
+    # quarters
+    d = parse_quarter_year(low) or _parse_quarter_date_extended(low)
+    if d:
+        return d.isoformat()
+
+    return None
+
+
 __all__ = [
+    # legacy helpers
     "now_iso",
     "end_of_quarter",
     "parse_quarter_year",
     "parse_quarter",
     "parse_date_loose",
     "to_iso_date",
+    # new API
+    "RU_MONTHS",
+    "NOW_TOKENS",
+    "quarter_end",
+    "parse_ddmmyyyy",
+    "parse_ru_textual_date",
+    "normalize_delivery_date",
+    "to_quarter_end_iso",
 ]
