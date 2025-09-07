@@ -1,0 +1,4 @@
+agentql
+playwright
+python-dotenv
+
