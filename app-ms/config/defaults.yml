@@ -1,0 +1,126 @@
+version: 3
+
+normalization:
+  numbers:
+    strip_currency: true
+    decimal_comma_to_dot: true
+
+  area:
+    unit: "sqm"
+
+  floor:
+    drop_tokens: ["этаж", "эт", "э."]
+    map_special:
+      basement: ["подвал", "-1"]
+      socle: ["цоколь"]
+      mezzanine: ["мезонин"]
+    multi:
+      enabled: true
+      split_separators: [",", ";", "/", " и ", "&"]
+      range_separators: ["-", "–"]
+      render:
+        join_token: "; "
+        range_dash: "–"
+        sort_numeric_first: true
+        uniq: true
+
+  use_type:
+    canon: ["офис", "торговое", "псн", "склад"]
+    synonyms:
+      офис: ["office", "open space", "кабинетная", "смешанная", "офіс"]
+      торговое: ["retail", "street-retail", "торговля", "магазин"]
+      псн: ["psn", "нежилое", "vip", "кальянная"]
+      склад: ["storage", "warehouse", "гараж"]
+
+  fitout_condition:
+    canon: ["с отделкой", "под отделку"]
+    synonyms:
+      "с отделкой": ["готово к въезду", "с мебелью", "есть отделка"]
+      "под отделку": ["white box", "готово к отделке"]
+
+  dates:
+    ru_months:
+      января: 01; февраля: 02; марта: 03; апреля: 04; мая: 05; июня: 06
+      июля: 07; августа: 08; сентября: 09; октября: 10; ноября: 11; декабря: 12
+    quarters:
+      Q1: "03-31"; Q2: "06-30"; Q3: "09-30"; Q4: "12-31"
+    now_tokens: ["сейчас", "свободно", "готово к въезду"]
+
+  vat:
+    treat_not_applied: ["усн", "упрощенка", "ндс 5%"]
+    default_rate: 0.20
+
+  opex:
+    default_included: false
+    default_year_per_sqm: null
+
+matching:
+  area_tolerance:
+    abs_sqm: 2
+    rel_pct: 2.0
+  # детерминированный join-key для листинга
+  join_key_listing:
+    parts: ["object_id", "building_token", "use_type_norm", "floors_norm", "area_1dp"]
+
+derivation:
+  rent_rate_year_sqm_base:
+    priority: ["direct", "reconstruct_from_month"]
+    reconstruct_from_month:
+      respect_vat: true
+      respect_opex: true
+      vat_fallback: 0.20
+      round_decimals: 2
+  gross_month_total:
+    round_decimals: 2
+
+quality:
+  outliers:
+    rent_rate_year_sqm_base:
+      min: 1000
+      max: 200000
+
+questions:
+  fitout_condition: "Уточните отделку: «с отделкой» или «под отделку»?"
+  delivery_date: "Уточните дату передачи (ISO YYYY-MM-DD) или «сейчас»."
+  rent_rate: "Подтвердите НДС (включен/не применяется) и OPEX (включён/отдельно, руб/м²/год)."
+  use_type: "Уточните тип использования: офис, торговое, псн или склад."
+
+# Имя здания и ID строятся на уровне листинга (без агрегаций)
+naming:
+  building:
+    name_compose: "{object_name}{suffix}"       # suffix = ", {building_token}" если он есть
+    id_compose: "{object_id}__{building_token_slug}"  # если токена нет — просто object_id
+
+identifier:
+  # Уникальный и стабильный ID листинга (по нормализованным полям + короткий хэш)
+  listing_id:
+    compose_parts: ["object_id", "building_token_slug", "use_type_norm_slug", "floors_norm_slug", "area_1dp"]
+    hash_part: ["source_file_basename"]  # включаем имя источника для уникальности при похожих блоках
+    hash_len: 8
+    join_token: "__"
+
+output:
+  # КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (КАЖДОЕ ПОМЕЩЕНИЕ = 1 СТРОКА)
+  listing_columns:
+    - listing_id
+    - object_id
+    - object_name
+    - building_id
+    - building_name
+    - use_type_norm
+    - area_sqm
+    - divisible_from_sqm
+    - floors_norm
+    - market_type
+    - fitout_condition_norm
+    - delivery_date_norm
+    - rent_rate_year_sqm_base
+    - rent_vat_norm
+    - opex_year_per_sqm
+    - opex_included
+    - rent_month_total_gross
+    - sale_price_per_sqm
+    - sale_vat_norm
+    - source_file
+    - request_id
+    - quality_flags
