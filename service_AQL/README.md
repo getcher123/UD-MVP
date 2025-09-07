@@ -26,8 +26,13 @@ Example
 5) Run the service:
    python -m service_AQL --input service_AQL/input --query app-ms/queries/default_query.txt
 
+Single File
+- Process one file instead of a folder:
+  python -m service_AQL --file path/to/document.pdf --query app-ms/queries/default_query.txt
+
 Options
 - `--input` (`-i`): Directory with files to process. Default: `service_AQL/input`.
+- `--file` (`-f`): A single file to process (mutually exclusive with `--input`).
 - `--output` (`-o`): Optional output directory for JSON. If omitted, writes next to inputs.
 - `--query` (`-q`): Path to query file. Default: `app-ms/queries/default_query.txt`.
 - `--mode`: AgentQL mode (e.g. `standard`). Default: `standard`.
@@ -36,4 +41,3 @@ Options
 Notes
 - The API key is loaded from the shared `.env` in the project root: `AGENTQL_API_KEY=...`.
 - Outputs are JSON files named after each input, with `.json` extension.
-

@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, List, Optional
 
 from dotenv import load_dotenv, find_dotenv
 from agentql.tools.sync_api import query_document
@@ -58,15 +58,27 @@ def install_playwright_chromium() -> None:
         print(f"⚠️ Playwright install failed: {type(e).__name__}: {e}", file=sys.stderr)
 
 
-def run(input_dir: Path, output_dir: Path | None, query_path: Path, mode: str) -> int:
-    ensure_api_key()
-    query = read_query(query_path)
+def collect_files(input_dir: Path, single_file: Optional[Path]) -> List[Path]:
+    if single_file is not None:
+        if not single_file.exists() or not single_file.is_file():
+            print(f"❌ Указанный файл не найден: {single_file}", file=sys.stderr)
+            sys.exit(2)
+        if single_file.suffix.lower() not in ALLOWED_EXTS:
+            print(f"❌ Неподдерживаемое расширение файла: {single_file.suffix}", file=sys.stderr)
+            sys.exit(2)
+        return [single_file]
 
     if not input_dir.exists():
         input_dir.mkdir(parents=True, exist_ok=True)
         print(f"⚠️ Created input directory: {input_dir} (place files to process here)")
+    return sorted(list(list_input_files(input_dir)))
 
-    files = sorted(list(list_input_files(input_dir)))
+
+def run(input_dir: Path, output_dir: Path | None, query_path: Path, mode: str, single_file: Optional[Path]) -> int:
+    ensure_api_key()
+    query = read_query(query_path)
+
+    files = collect_files(input_dir, single_file)
     if not files:
         print(f"⚠️ Нет входных файлов с поддерживаемыми расширениями в папке: {input_dir}")
         return 0
@@ -92,7 +104,9 @@ def run(input_dir: Path, output_dir: Path | None, query_path: Path, mode: str) -
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="AgentQL document query runner")
-    p.add_argument("--input", "-i", type=Path, default=DEFAULT_INPUT_DIR, help="Папка с входными файлами")
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--input", "-i", type=Path, default=DEFAULT_INPUT_DIR, help="Папка с входными файлами")
+    group.add_argument("--file", "-f", type=Path, default=None, help="Один файл для обработки")
     p.add_argument("--output", "-o", type=Path, default=None, help="Папка для JSON результатов (необязательно)")
     p.add_argument("--query", "-q", type=Path, default=DEFAULT_QUERY_PATH, help="Путь к файлу с запросом AgentQL")
     p.add_argument("--mode", type=str, default="standard", help="Режим AgentQL (например, standard)")
@@ -104,9 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     if args.install_playwright:
         install_playwright_chromium()
-    return run(args.input, args.output, args.query, args.mode)
+    return run(args.input, args.output, args.query, args.mode, args.file)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
