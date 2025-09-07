@@ -86,3 +86,9 @@ gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8080 --tim
 - `app/handlers/` — обработчики сообщений (`/start`, документы/фото и т.д.).
 - `app/services/ms_client.py` — HTTP‑клиент для микросервиса обработки.
 - `app/utils/files.py` — утилиты для каталогов/файлов и лимитов.
+
+
+## Микросервис обработки (`app-ms`)
+- Смотрите подробную документацию: app-ms/README.md
+- Кратко: принимает загруженный файл, при необходимости конвертирует в PDF, извлекает данные (AgentQL), нормализует и возвращает результат в Excel/JSON.
+- Основной эндпоинт: `POST /process_file` (multipart: `file`, опции `output`, `request_id`). Есть также `GET /healthz`, `GET /version`.
