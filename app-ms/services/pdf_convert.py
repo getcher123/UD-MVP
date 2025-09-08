@@ -61,8 +61,32 @@ def _convert_image_to_pdf(input_path: Path, out_dir: Path) -> Path:
 
 
 def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
-    # Locate soffice
-    soffice = shutil.which("soffice") or shutil.which("libreoffice") or "soffice"
+    """Convert DOCX/PPTX/XLSX to PDF using LibreOffice (soffice).
+
+    On Windows/macOS, tries common installation paths if soffice is not in PATH.
+    You can override the path by setting the SOFFICE_PATH environment variable.
+    """
+    # Locate soffice (allow override via env)
+    soffice_env = os.getenv("SOFFICE_PATH")
+    soffice = soffice_env or shutil.which("soffice") or shutil.which("libreoffice")
+
+    if not soffice:
+        # Try common Windows locations
+        candidates = [
+            r"C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+            r"C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+        ]
+        for c in candidates:
+            if Path(c).exists():
+                soffice = c
+                break
+
+    if not soffice:
+        raise ServiceError(
+            ErrorCode.PDF_CONVERSION_ERROR,
+            422,
+            "LibreOffice (soffice) not found. Install LibreOffice or set SOFFICE_PATH to soffice executable.",
+        )
 
     ensure_dir(out_dir)
     logger.info(
@@ -71,7 +95,7 @@ def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
     )
     try:
         result = subprocess.run(
-            [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(input_path)],
+            [str(soffice), "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(input_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -79,7 +103,7 @@ def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
         )
     except Exception as e:
         logger.exception("Failed to invoke soffice", extra={"src": str(input_path)})
-        raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 500, f"Failed to run soffice: {e}")
+        raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to run soffice: {e}")
 
     rc = result if isinstance(result, int) else getattr(result, "returncode", None)
     stdout = "" if isinstance(result, int) else getattr(result, "stdout", "")
@@ -92,11 +116,7 @@ def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
     # Expected output file path
     out_pdf = out_dir / f"{input_path.stem}.pdf"
     if (rc is None or rc != 0) or not out_pdf.exists():
-        raise ServiceError(
-            ErrorCode.PDF_CONVERSION_ERROR,
-            500,
-            "Failed to convert document to PDF",
-        )
+        raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, "Failed to convert document to PDF")
     return out_pdf
 
 

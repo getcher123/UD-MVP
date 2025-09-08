@@ -62,6 +62,17 @@ async def process_file(
     except Exception as e:  # noqa: BLE001
         raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to convert to PDF: {e}")
 
+    # Persist converted PDF next to results for traceability (if different from source)
+    try:
+        pdf_src = Path(pdf_path)
+        if pdf_src.exists():
+            pdf_dest = build_result_path(req_id, pdf_src.name, base_dir=settings.RESULTS_DIR)
+            if str(pdf_dest) != str(pdf_src):
+                write_bytes(pdf_dest, pdf_src.read_bytes())
+    except Exception:
+        # Non-fatal: continue even if we failed to copy PDF
+        pass
+
     # Load default query if not provided
     query_text: str
     if query and query.strip():
@@ -81,11 +92,12 @@ async def process_file(
         raise ServiceError(ErrorCode.AGENTQL_ERROR, 424, f"AgentQL failed: {e}")
 
     # Persist raw AgentQL response for debugging/traceability
+    raw_path = build_result_path(req_id, "agentql.json", base_dir=settings.RESULTS_DIR)
+    import json as _json
     try:
-        raw_path = build_result_path(req_id, "agentql.json", base_dir=settings.RESULTS_DIR)
-        import json as _json
         write_text(raw_path, _json.dumps(aql_resp, ensure_ascii=False, indent=2))
     except Exception:
+        # Non-fatal
         pass
 
     # Load rules
