@@ -10,7 +10,11 @@ from typing import List, Optional
 @dataclass(frozen=True)
 class Settings:
     AGENTQL_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-5"
     DEFAULT_QUERY_PATH: str = "app-ms/queries/default_query.txt"
+    CHATGPT_INSTRUCTIONS_PATH: str = "app-ms/config/chatgpt_instructions.txt"
+    CHATGPT_SCHEMA_PATH: str = "app-ms/config/chatgpt_schema.json"
     RULES_PATH: str = "app-ms/config/defaults.yml"
     MAX_FILE_MB: int = 20
     ALLOW_TYPES: List[str] = field(default_factory=lambda: [
@@ -59,13 +63,19 @@ def get_settings() -> Settings:
     except ValueError:
         max_file_mb = 20
 
-    # Build a robust default path for the query file relative to this package
+    # Build robust default paths relative to this package
     pkg_root = Path(__file__).resolve().parents[1]
     default_query_path_fallback = str(pkg_root / "queries" / "default_query.txt")
+    instructions_path_fallback = str(pkg_root / "config" / "chatgpt_instructions.txt")
+    schema_path_fallback = str(pkg_root / "config" / "chatgpt_schema.json")
 
     return Settings(
         AGENTQL_API_KEY=os.getenv("AGENTQL_API_KEY"),
+        OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
+        OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-5"),
         DEFAULT_QUERY_PATH=os.getenv("DEFAULT_QUERY_PATH", default_query_path_fallback),
+        CHATGPT_INSTRUCTIONS_PATH=os.getenv("CHATGPT_INSTRUCTIONS_PATH", instructions_path_fallback),
+        CHATGPT_SCHEMA_PATH=os.getenv("CHATGPT_SCHEMA_PATH", schema_path_fallback),
         RULES_PATH=os.getenv("RULES_PATH", "app-ms/config/defaults.yml"),
         MAX_FILE_MB=max_file_mb,
         ALLOW_TYPES=allow_types,

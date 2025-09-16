@@ -56,7 +56,7 @@
 ```bash
 cd app-ms
 pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload --env-file ./.env
 ```
 
 **Smoke (curl):**
@@ -249,3 +249,22 @@ curl.exe -F "file=@service_AQL\input\28.04.2025 -Таблица по свобо�
 - Для Windows PowerShell используйте `curl.exe` (а не алиас `curl`).
 - Если используется корпоративный прокси, передавайте его в сборку: `--build-arg HTTP_PROXY=... --build-arg HTTPS_PROXY=...`.
 - Для стабильной сборки рекомендуется увеличить память Docker Desktop до 4–6 GB (LibreOffice тянет зависимости).
+## ChatGPT structured extraction
+
+```
+POST /chatgpt/parse
+Content-Type: application/json
+{
+  "text": "...raw STT transcript...",
+  "request_id": "optional-id"
+}
+```
+
+The endpoint returns a JSON payload with the structured objects produced by the configured OpenAI model together with the generated request identifier and latency in milliseconds.
+
+Configuration knobs:
+- `OPENAI_API_KEY` / `OPENAI_MODEL`
+- `CHATGPT_INSTRUCTIONS_PATH`
+- `CHATGPT_SCHEMA_PATH`
+
+Instructions are stored in `config/chatgpt_instructions.txt` and the JSON schema in `config/chatgpt_schema.json`; override the env vars above to customize.
