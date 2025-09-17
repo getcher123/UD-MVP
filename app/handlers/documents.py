@@ -1,12 +1,13 @@
-"""Handlers for incoming documents and photos."""
+"""Handlers for incoming documents, photos, and audio."""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 from aiogram import Router, types, F
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, TelegramObject
 import httpx
 
 from ..utils.files import safe_filename, max_size_bytes
@@ -23,133 +24,196 @@ def _uploads_dir() -> Path:
     return root / "data" / "uploads"
 
 
-async def _reject_audio_if_any(message: types.Message) -> bool:
-    """Return True if audio/voice present and reply with hint."""
-    if getattr(message, "audio", None) is not None or getattr(message, "voice", None) is not None:
-        await message.answer("Аудио пока не поддерживается")
-        return True
-    return False
+def _guess_extension(mime_type: Optional[str], default_suffix: str) -> str:
+    if default_suffix and not default_suffix.startswith("."):
+        default_suffix = f".{default_suffix}"
+    default_suffix = default_suffix.lower()
+    if not mime_type:
+        return default_suffix
+
+    mime = mime_type.split(";")[0].strip().lower()
+    mapping = {
+        "audio/mpeg": ".mp3",
+        "audio/mp3": ".mp3",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/ogg": ".ogg",
+        "audio/opus": ".ogg",
+        "audio/x-opus+ogg": ".ogg",
+        "audio/webm": ".webm",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/aac": ".aac",
+        "audio/flac": ".flac",
+    }
+    if mime in mapping:
+        return mapping[mime]
+
+    subtype = mime.split("/")[-1]
+    if not subtype:
+        return default_suffix
+    if subtype == "mpeg":
+        return ".mp3"
+    return f".{subtype}"
+
+
+def _fallback_filename(
+    prefix: str,
+    unique_id: Optional[str],
+    mime_type: Optional[str],
+    default_suffix: str,
+) -> str:
+    suffix = _guess_extension(mime_type, default_suffix)
+    uid = unique_id or "file"
+    return f"{prefix}_{uid}{suffix}" if suffix else f"{prefix}_{uid}"
+
+
+async def _process_telegram_file(
+    message: types.Message,
+    telegram_file: TelegramObject,
+    *,
+    preferred_name: Optional[str],
+    fallback_prefix: str,
+    default_suffix: str,
+    file_size: Optional[int],
+    mime_type: Optional[str],
+    log_kind: str,
+) -> None:
+    size_limit = max_size_bytes()
+    if file_size and file_size > size_limit:
+        await message.answer("Файл слишком большой (максимум 20 МБ)")
+        return
+
+    filename = preferred_name or _fallback_filename(
+        fallback_prefix,
+        getattr(telegram_file, "file_unique_id", None),
+        mime_type,
+        default_suffix,
+    )
+    safe_name = safe_filename(filename)
+
+    if not Path(safe_name).suffix:
+        suffix = _guess_extension(mime_type, default_suffix)
+        if suffix:
+            safe_name = safe_filename(f"{safe_name}{suffix}")
+
+    dest = _uploads_dir() / safe_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info(
+        "[documents] Получен %s: chat_id=%s name=%s size=%sB",
+        log_kind,
+        getattr(message.chat, "id", "?"),
+        safe_name,
+        file_size,
+    )
+    await message.bot.download(telegram_file, destination=dest)
+
+    await message.answer("Файл получен, обрабатываю…")
+
+    try:
+        logger.info("[documents] Отправляю файл в МС: path=%s kind=%s", dest, log_kind)
+        xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
+        logger.info(
+            "[documents] Получена сводная таблица от МС: out_name=%s size=%sB kind=%s",
+            out_name,
+            len(xlsx_bytes),
+            log_kind,
+        )
+        buf = BufferedInputFile(xlsx_bytes, filename=out_name)
+        await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
+    except httpx.HTTPStatusError as exc:
+        logger.exception(
+            "[documents] Ошибка от микросервиса %s для %s",
+            getattr(exc.response, "status_code", "?"),
+            dest,
+        )
+        await message.answer("Не удалось обработать файл, попробуйте позже")
+    except httpx.HTTPError:
+        logger.exception("[documents] Сетевая ошибка при работе с МС для %s", dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
+    except Exception:
+        logger.exception("[documents] Непредвиденная ошибка обработки файла %s", dest)
+        await message.answer("Не удалось обработать файл, попробуйте позже")
+    finally:
+        try:
+            dest.unlink(missing_ok=True)
+        except Exception:
+            logger.exception("[documents] Не удалось удалить временный файл %s", dest)
 
 
 @router.message(F.document)
 async def on_document(message: types.Message) -> None:
     """Handle incoming document messages (PDF/DOCX/PPTX/XLSX/etc)."""
-    if await _reject_audio_if_any(message):
-        return
-
     doc = message.document
     if doc is None:
         return
 
-    # Reject audio-like documents as unsupported
-    mime = (doc.mime_type or "").lower()
-    if mime.startswith("audio/"):
-        await message.answer("Аудио пока не поддерживается")
-        return
-
-    size_limit = max_size_bytes()
-    if (doc.file_size or 0) > size_limit:
-        await message.answer("Файл слишком большой (максимум 20 МБ)")
-        return
-
-    # Prepare destination path
-    filename = safe_filename(doc.file_name or f"document_{doc.file_unique_id}")
-    dest = _uploads_dir() / filename
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
-    # Download file to disk
-    logger.info(
-        "[documents] Получен файл: chat_id=%s name=%s size=%sB",
-        getattr(message.chat, "id", "?"),
-        doc.file_name,
-        doc.file_size,
+    await _process_telegram_file(
+        message,
+        doc,
+        preferred_name=doc.file_name,
+        fallback_prefix="document",
+        default_suffix="",
+        file_size=doc.file_size,
+        mime_type=doc.mime_type,
+        log_kind="document",
     )
-    await message.bot.download(doc, destination=dest)
-
-    await message.answer("Файл получен, обрабатываю…")
-
-    try:
-        logger.info("[documents] Отправляю файл в МС: path=%s", dest)
-        xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
-        logger.info("[documents] Получен ответ от МС: out_name=%s size=%sB", out_name, len(xlsx_bytes))
-        buf = BufferedInputFile(xlsx_bytes, filename=out_name)
-        await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
-    except httpx.HTTPStatusError as e:
-        # Distinguish 5xx as "try later"; still respond the same as per requirements
-        logger.exception("[documents] МС вернул ошибку %s для %s", getattr(e.response, "status_code", "?"), dest)
-        await message.answer("Не удалось обработать файл, попробуйте позже")
-    except httpx.HTTPError:
-        logger.exception("[documents] Сетевая ошибка при обращении к МС для %s", dest)
-        await message.answer("Не удалось обработать файл, попробуйте позже")
-    except Exception:
-        logger.exception("[documents] Неожиданная ошибка обработки для %s", dest)
-        await message.answer("Не удалось обработать файл, попробуйте позже")
-    finally:
-        try:
-            dest.unlink(missing_ok=True)
-        except Exception:
-            logger.exception("[documents] Не удалось удалить временный файл %s", dest)
 
 
 @router.message(F.photo)
 async def on_photo(message: types.Message) -> None:
     """Handle incoming photo messages (pick the largest size)."""
-    if await _reject_audio_if_any(message):
-        return
-
     if not message.photo:
         return
 
     photo = message.photo[-1]
 
-    size_limit = max_size_bytes()
-    if (photo.file_size or 0) > size_limit:
-        await message.answer("Файл слишком большой (максимум 20 МБ)")
-        return
-
-    filename = safe_filename(f"photo_{photo.file_unique_id}.jpg")
-    dest = _uploads_dir() / filename
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
-    logger.info(
-        "[documents] Получена фотография: chat_id=%s name=%s size=%sB",
-        getattr(message.chat, "id", "?"),
-        filename,
-        photo.file_size,
+    await _process_telegram_file(
+        message,
+        photo,
+        preferred_name=f"photo_{photo.file_unique_id}.jpg",
+        fallback_prefix="photo",
+        default_suffix=".jpg",
+        file_size=photo.file_size,
+        mime_type="image/jpeg",
+        log_kind="photo",
     )
-    await message.bot.download(photo, destination=dest)
-
-    await message.answer("Файл получен, обрабатываю…")
-
-    try:
-        logger.info("[documents] Отправляю фото в МС: path=%s", dest)
-        xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
-        logger.info("[documents] Получен ответ от МС: out_name=%s size=%sB", out_name, len(xlsx_bytes))
-        buf = BufferedInputFile(xlsx_bytes, filename=out_name)
-        await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
-    except httpx.HTTPStatusError as e:
-        logger.exception("[documents] МС вернул ошибку %s для %s", getattr(e.response, "status_code", "?"), dest)
-        await message.answer("Не удалось обработать файл, попробуйте позже")
-    except httpx.HTTPError:
-        logger.exception("[documents] Сетевая ошибка при обращении к МС для %s", dest)
-        await message.answer("Не удалось обработать файл, попробуйте позже")
-    except Exception:
-        logger.exception("[documents] Неожиданная ошибка обработки для %s", dest)
-        await message.answer("Не удалось обработать файл, попробуйте позже")
-    finally:
-        try:
-            dest.unlink(missing_ok=True)
-        except Exception:
-            logger.exception("[documents] Не удалось удалить временный файл %s", dest)
 
 
 @router.message(F.audio)
 async def on_audio(message: types.Message) -> None:
-    """Explicit handler for audio messages (e.g., MP3)."""
-    await message.answer("Аудио пока не поддерживается")
+    """Process audio messages (e.g., MP3/M4A/OGG)."""
+    audio = message.audio
+    if audio is None:
+        return
+
+    await _process_telegram_file(
+        message,
+        audio,
+        preferred_name=audio.file_name,
+        fallback_prefix="audio",
+        default_suffix=".mp3",
+        file_size=audio.file_size,
+        mime_type=audio.mime_type,
+        log_kind="audio",
+    )
 
 
 @router.message(F.voice)
 async def on_voice(message: types.Message) -> None:
-    """Explicit handler for voice messages (Opus in OGG)."""
-    await message.answer("Аудио пока не поддерживается")
+    """Process voice messages (Opus in OGG)."""
+    voice = message.voice
+    if voice is None:
+        return
+
+    await _process_telegram_file(
+        message,
+        voice,
+        preferred_name=None,
+        fallback_prefix="voice",
+        default_suffix=".ogg",
+        file_size=voice.file_size,
+        mime_type=voice.mime_type,
+        log_kind="voice",
+    )

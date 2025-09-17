@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
@@ -10,6 +10,7 @@ class ErrorCode(str, Enum):
     PDF_CONVERSION_ERROR = "PDF_CONVERSION_ERROR"
     AGENTQL_ERROR = "AGENTQL_ERROR"
     OPENAI_ERROR = "OPENAI_ERROR"
+    TRANSCRIPTION_ERROR = "TRANSCRIPTION_ERROR"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 

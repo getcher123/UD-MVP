@@ -47,42 +47,52 @@ curl -X POST http://localhost:8001/v1/transcribe \
         "audio_base64": "<base64-строка файла>",
         "filename": "dialogue.wav",
         "settings": {
+          "diar": true,
           "language": "ru",
           "whisper_model": "medium"
         }
       }'
 ```
+### Структура запроса
+- `audio_base64` — base64-представление бинарного аудио (обязательно).
+- `filename` — имя файла с расширением, чтобы `diarize.py` распознал формат (опционально).
+- `settings` — параметры Whisper и diarизации:
+  - `language` — код языка Whisper.
+  - `whisper_model` — название модели.
+  - `diar` — `true` для SRT, `false` для plain-текста.
+
 **Smoke (curl):**
 
 ```bash
-curl -Method Post http://localhost:8001/v1/transcribe -ContentType "application/json" -Body ('{{"audio_base64":"{0}","filename":"audio_2025-09-16_17-13-23.ogg","settings":{{"language":"ru","whisper_model":"medium"}}}}' -f ([Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\UD-MVP\app-audio\data\audio_2025-09-16_17-13-23.ogg")))) -o app-audio\data\response.json
+curl -Method Post http://localhost:8001/v1/transcribe -ContentType "application/json" -Body ('{{"audio_base64":"{0}","filename":"audio_2025-09-16_17-13-23.ogg","settings":{{"diar":true,"language":"ru","whisper_model":"medium"}}}}' -f ([Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\UD-MVP\app-audio\data\audio_2025-09-16_17-13-23.ogg")))) -o app-audio\data\response.json
 ```
 
-### Формат ответа
+### Формат ответа (`diar = true`)
 ```json
 {
-  "text": "Полный текст диалога",
   "model": "medium",
   "language": "ru",
   "duration_ms": 12345,
-  "speakers": [
-    {
-      "speaker": "speaker1",
-      "start": 0.0,
-      "end": 5.2,
-      "text": "Реплика первого собеседника"
-    },
-    {
-      "speaker": "speaker2",
-      "start": 5.2,
-      "end": 10.7,
-      "text": "Ответ второго собеседника"
-    }
-  ]
+  "text": null,
+  "srt": "1\n00:00:00,000 --> 00:00:05,200\nspeaker1: Привет!\n"
 }
 ```
 
+### Формат ответа (`diar = false`)
+```json
+{
+  "model": "medium",
+  "language": "ru",
+  "duration_ms": 12345,
+  "text": "Полный текст диалога",
+  "srt": null
+}
+```
 ### Примечания
+- Поле, не применимое для ответа, возвращается как `null` (например, `text` при `diar = true`).
 - `.srt`, `.txt`, `.json`, созданные `diarize.py`, удаляются после обработки.
+- Поле `settings.diar` управляет форматом: `true` — возвращаем SRT, `false` — плоский текст.
 - Если каталог `app-audio/whisper-diarization` отсутствует, сервис вернёт подсказку.
 - Чтобы поменять модель, передайте нужное значение в `settings.whisper_model` (например, `large-v3`).
+
+

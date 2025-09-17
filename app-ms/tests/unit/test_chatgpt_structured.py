@@ -1,5 +1,12 @@
 ﻿import json
+import sys
+from pathlib import Path
 from types import SimpleNamespace
+
+APP_MS_ROOT = Path(__file__).resolve().parents[2]
+if str(APP_MS_ROOT) not in sys.path:
+    sys.path.insert(0, str(APP_MS_ROOT))
+
 
 import pytest
 
@@ -22,48 +29,47 @@ def reset_caches():
             cache_clear()
 
 
-def _build_payload():
-    return {
+def _write_config_files(tmp_path):
+    instructions_path = tmp_path / "instructions.txt"
+    instructions_path.write_text("system instructions", encoding="utf-8")
+
+    schema_path = tmp_path / "schema.json"
+    schema = {
+        "type": "object",
+        "properties": {
+            "objects": {"type": "array"}
+        },
+        "required": ["objects"],
+    }
+    schema_path.write_text(json.dumps(schema), encoding="utf-8")
+    return instructions_path, schema_path
+
+
+class DummySettings:
+    def __init__(self, instructions_path, schema_path):
+        self.OPENAI_API_KEY = "sk-test"
+        self.OPENAI_MODEL = "gpt-test"
+        self.CHATGPT_INSTRUCTIONS_PATH = str(instructions_path)
+        self.CHATGPT_SCHEMA_PATH = str(schema_path)
+
+
+def test_extract_structured_objects_parses_openai_response(monkeypatch, tmp_path):
+    instructions_path, schema_path = _write_config_files(tmp_path)
+    payload = {
         "objects": [
             {
                 "object_rent_vat": None,
                 "object_name": None,
                 "sale_price_per_building": None,
                 "object_use_type": None,
-                "buildings": [
-                    {
-                        "building_name": None,
-                        "listings": [
-                            {
-                                "use_type": None,
-                                "area_sqm": None,
-                                "divisible_from_sqm": None,
-                                "floor": None,
-                                "market_type": None,
-                                "fitout_condition": None,
-                                "delivery_date": None,
-                                "assignment_of_rights": None,
-                                "assignment_details": None,
-                                "rent_rate": None,
-                                "rent_cost_month_per_room": None,
-                                "rent_vat": None,
-                                "sale_price_per_sqm": None,
-                                "sale_vat": None,
-                                "opex_included": None,
-                                "opex_year_per_sqm": None,
-                            }
-                        ],
-                    }
-                ],
+                "buildings": [],
             }
         ]
     }
 
-
-def test_extract_structured_objects_parses_openai_response(monkeypatch):
-    payload = _build_payload()
-
-    def fake_create(**kwargs):  # noqa: ANN001
+    def fake_create(model, messages, tools, tool_choice):  # noqa: ANN001
+        assert model == "gpt-test"
+        assert any("Извлеки поля" in msg["content"] for msg in messages if isinstance(msg, dict))
         tool_call = SimpleNamespace(function=SimpleNamespace(arguments=json.dumps(payload)))
         message = SimpleNamespace(tool_calls=[tool_call])
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
@@ -73,8 +79,9 @@ def test_extract_structured_objects_parses_openai_response(monkeypatch):
     )
 
     monkeypatch.setattr(mod, "_get_openai_client", lambda: dummy_client)
+    monkeypatch.setattr(mod, "get_settings", lambda: DummySettings(instructions_path, schema_path))
 
-    result = mod.extract_structured_objects("some text")
+    result = mod.extract_structured_objects("какой-то текст")
     assert result == payload
 
 

@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -12,13 +13,16 @@ from core.config_loader import get_rules
 from core.errors import ErrorCode, ServiceError
 from core.ids import new_job_id
 from services.agentql_client import run_agentql
-from services.listings import flatten_objects_to_listings
+from services.audio_client import transcribe_audio
+from services.chatgpt_structured import extract_structured_objects
 from services.excel_export import build_xlsx
+from services.listings import flatten_objects_to_listings
 from services.normalize import normalize_agentql_payload
 from services.pdf_convert import to_pdf
 from utils.fs import (
     build_result_path,
     enforce_size_limit,
+    file_ext,
     is_allowed_type,
     write_bytes,
     write_text,
@@ -29,6 +33,14 @@ router = APIRouter(tags=["process"])
 settings = get_settings()
 
 
+def _persist_json(data: dict, req_id: str, name: str) -> None:
+    try:
+        target = build_result_path(req_id, name, base_dir=settings.RESULTS_DIR)
+        write_text(target, json.dumps(data, ensure_ascii=False, indent=2))
+    except Exception:  # pragma: no cover - diagnostics helper
+        pass
+
+
 @router.post("/process_file")
 async def process_file(
     file: UploadFile = File(...),
@@ -37,15 +49,13 @@ async def process_file(
     output: Optional[str] = Form("excel"),
 ) -> dict:
     start_ts = time.perf_counter()
-    req_id = (request_id or new_job_id())
+    req_id = request_id or new_job_id()
     filename = file.filename or "upload"
 
-    # Save upload to a temp path under results dir for traceability
     src_path = build_result_path(req_id, filename, base_dir=settings.RESULTS_DIR)
     data = await file.read()
     write_bytes(src_path, data)
 
-    # Validate type/size
     try:
         enforce_size_limit(src_path, settings.MAX_FILE_MB)
     except ValueError as e:
@@ -53,70 +63,78 @@ async def process_file(
     if not is_allowed_type(src_path, settings.ALLOW_TYPES):
         raise ServiceError(ErrorCode.UNSUPPORTED_TYPE, 400, f"Unsupported file type: {Path(src_path).suffix}")
 
-    # Convert to PDF if needed
-    try:
-        pdf_path = to_pdf(str(src_path), settings.PDF_TMP_DIR)
-    except ServiceError:
-        # propagate explicit conversion errors
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to convert to PDF: {e}")
+    ext = file_ext(src_path)
+    is_audio = ext in settings.AUDIO_TYPES
 
-    # Persist converted PDF next to results for traceability (if different from source)
-    try:
-        pdf_src = Path(pdf_path)
-        if pdf_src.exists():
-            pdf_dest = build_result_path(req_id, pdf_src.name, base_dir=settings.RESULTS_DIR)
-            if str(pdf_dest) != str(pdf_src):
-                write_bytes(pdf_dest, pdf_src.read_bytes())
-    except Exception:
-        # Non-fatal: continue even if we failed to copy PDF
-        pass
+    payload: dict[str, object]
+    pending_questions: list[dict[str, object]] = []
+    pipeline_marker = "audio_chatgpt" if is_audio else "document_agentql"
 
-    # Load default query if not provided
-    query_text: str
-    if query and query.strip():
-        query_text = query
+    if is_audio:
+        transcription = transcribe_audio(data, filename, settings)
+        _persist_json(transcription, req_id, "app_audio_response.json")
+
+        srt = transcription.get("srt") if isinstance(transcription, dict) else None
+        if not isinstance(srt, str) or not srt.strip():
+            raise ServiceError(ErrorCode.TRANSCRIPTION_ERROR, 424, "app-audio returned empty SRT payload")
+
+        srt_name = f"{Path(filename).stem or 'audio'}.srt"
+        try:
+            write_text(build_result_path(req_id, srt_name, base_dir=settings.RESULTS_DIR), srt)
+        except Exception:  # pragma: no cover - diagnostics helper
+            pass
+
+        payload = extract_structured_objects(srt)
+        _persist_json(payload, req_id, "chatgpt_structured.json")
     else:
-        qpath = Path(settings.DEFAULT_QUERY_PATH)
-        if not qpath.exists():
-            raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Default query not found: {qpath}")
-        query_text = qpath.read_text(encoding="utf-8")
+        try:
+            pdf_path = to_pdf(str(src_path), settings.PDF_TMP_DIR)
+        except ServiceError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to convert to PDF: {e}")
 
-    # Call AgentQL
-    try:
-        aql_resp = run_agentql(pdf_path, query_text, mode="standard")
-    except ServiceError:
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise ServiceError(ErrorCode.AGENTQL_ERROR, 424, f"AgentQL failed: {e}")
+        try:
+            pdf_src = Path(pdf_path)
+            if pdf_src.exists():
+                pdf_dest = build_result_path(req_id, pdf_src.name, base_dir=settings.RESULTS_DIR)
+                if str(pdf_dest) != str(pdf_src):
+                    write_bytes(pdf_dest, pdf_src.read_bytes())
+        except Exception:  # pragma: no cover - diagnostics helper
+            pass
 
-    # Persist raw AgentQL response for debugging/traceability
-    raw_path = build_result_path(req_id, "agentql.json", base_dir=settings.RESULTS_DIR)
-    import json as _json
-    try:
-        write_text(raw_path, _json.dumps(aql_resp, ensure_ascii=False, indent=2))
-    except Exception:
-        # Non-fatal
-        pass
+        if query and query.strip():
+            query_text = query
+        else:
+            qpath = Path(settings.DEFAULT_QUERY_PATH)
+            if not qpath.exists():
+                raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Default query not found: {qpath}")
+            query_text = qpath.read_text(encoding="utf-8")
 
-    # Load rules
+        try:
+            aql_resp = run_agentql(pdf_path, query_text, mode="standard")
+        except ServiceError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise ServiceError(ErrorCode.AGENTQL_ERROR, 424, f"AgentQL failed: {e}")
+
+        if isinstance(aql_resp, dict):
+            _persist_json(aql_resp, req_id, "agentql.json")
+            payload = aql_resp
+        else:
+            _persist_json({"data": aql_resp}, req_id, "agentql.json")
+            payload = {}
+
     rules = get_rules(settings.RULES_PATH)
-
-    # Normalize AgentQL payload to domain objects
-    payload = aql_resp if isinstance(aql_resp, dict) else {}
     objects, pending_questions = normalize_agentql_payload(payload, rules)
 
-    # Flatten to listing rows
     rows = flatten_objects_to_listings(objects, rules, request_id=req_id, source_file=filename)
 
-    # Export Excel (listings)
     columns = rules["output"]["listing_columns"]
     export_path = build_result_path(req_id, "listings.xlsx", base_dir=settings.RESULTS_DIR)
     xlsx_bytes = build_xlsx(rows, columns=columns)
     write_bytes(export_path, xlsx_bytes)
 
-    # Build response
     elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
     listings_total = len(rows)
     excel_url = None
@@ -124,7 +142,6 @@ async def process_file(
         base = settings.BASE_URL.rstrip("/")
         excel_url = f"{base}/results/{req_id}/listings.xlsx"
 
-    # Respect output format: excel (default) | json | both
     out_mode = (output or "excel").lower()
     if out_mode == "excel":
         headers = {"Content-Disposition": 'attachment; filename="listings.xlsx"'}
@@ -144,8 +161,9 @@ async def process_file(
             "source_file": os.path.basename(filename),
             "listings_total": listings_total,
             "timing_ms": elapsed_ms,
-            "agentql_mode": "standard",
+            "pipeline": pipeline_marker,
+            "agentql_mode": "standard" if not is_audio else None,
         },
     }
-    return body
 
+    return body

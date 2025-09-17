@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 from time import perf_counter
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import types
@@ -38,6 +38,7 @@ class TranscriptionSettings(BaseModel):
 
     language: str = Field(default=DEFAULT_LANGUAGE, description="Whisper language code (e.g. 'ru').")
     whisper_model: str = Field(default=DEFAULT_MODEL, description="Whisper model name, e.g. 'medium'.")
+    diar: bool = Field(default=True, description="When true returns SRT output; otherwise a plain transcript.")
 
 
 class TranscriptionRequest(BaseModel):
@@ -72,13 +73,16 @@ class SpeakerTurn(BaseModel):
 class TranscriptionResponse(BaseModel):
     """Result returned to the client."""
 
-    text: str = Field(..., description="Full transcript text (concatenated).")
     model: str = Field(..., description="Whisper model that diarize.py used.")
     language: str = Field(..., description="Language supplied to diarize.py.")
     duration_ms: int = Field(..., description="Processing duration in milliseconds.")
-    speakers: List[SpeakerTurn] = Field(
-        default_factory=list,
-        description="Ordered speaker segments parsed from diarization output.",
+    text: Optional[str] = Field(
+        default=None,
+        description="Plain transcript when diarization output is disabled.",
+    )
+    srt: Optional[str] = Field(
+        default=None,
+        description="Raw SRT data when diarization is requested.",
     )
 
 
@@ -140,8 +144,8 @@ def _parse_timestamp(value: str) -> float:
     return int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int(millis) / 1000
 
 
-def _parse_srt(srt_file: Path) -> List[SpeakerTurn]:
-    """Parse diarization SRT output into speaker turns with normalized labels."""
+def _parse_srt(srt_file: Path) -> tuple[list[SpeakerTurn], str]:
+    """Parse diarization SRT output into speaker turns and return raw SRT."""
 
     if not srt_file.exists():
         raise HTTPException(status_code=500, detail="Diarization output (.srt) not found")
@@ -183,7 +187,7 @@ def _parse_srt(srt_file: Path) -> List[SpeakerTurn]:
             blocks[-1].end = end
         else:
             blocks.append(SpeakerTurn(speaker=speaker, start=start, end=end, text=utterance))
-    return blocks
+    return blocks, content
 
 
 @app.post("/v1/transcribe", response_model=TranscriptionResponse)
@@ -194,21 +198,31 @@ async def transcribe_audio(payload: TranscriptionRequest) -> TranscriptionRespon
 
     temp_path: Optional[Path] = None
     started_at = perf_counter()
+    settings = payload.settings
     try:
         temp_path = _decode_audio(payload.audio_base64, payload.filename)
-        _run_diarize(temp_path, payload.settings)
+        _run_diarize(temp_path, settings)
         srt_path = temp_path.with_suffix(".srt")
-        speaker_turns = _parse_srt(srt_path)
-        if not speaker_turns:
-            raise HTTPException(status_code=500, detail="Diarization produced no speaker segments")
-        text_combined = " ".join(turn.text for turn in speaker_turns).strip()
+        speaker_turns, srt_raw = _parse_srt(srt_path)
         duration_ms = int((perf_counter() - started_at) * 1000)
+        if settings.diar:
+            if not srt_raw.strip():
+                raise HTTPException(status_code=500, detail="Diarization produced empty SRT output")
+            return TranscriptionResponse(
+                model=settings.whisper_model,
+                language=settings.language,
+                duration_ms=duration_ms,
+                srt=srt_raw,
+            )
+
+        text_combined = " ".join(turn.text for turn in speaker_turns).strip()
+        if not text_combined:
+            raise HTTPException(status_code=500, detail="Transcription contained no text")
         return TranscriptionResponse(
-            text=text_combined,
-            model=payload.settings.whisper_model,
-            language=payload.settings.language,
+            model=settings.whisper_model,
+            language=settings.language,
             duration_ms=duration_ms,
-            speakers=speaker_turns,
+            text=text_combined,
         )
     finally:
         if temp_path and temp_path.exists():
@@ -231,6 +245,3 @@ async def health() -> dict[str, str]:
     """Simple readiness endpoint."""
 
     return {"status": "ok"}
-
-
-
