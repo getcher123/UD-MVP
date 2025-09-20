@@ -1,4 +1,4 @@
-agentql
+﻿agentql
 playwright
 python-dotenv
-
+pymupdf
