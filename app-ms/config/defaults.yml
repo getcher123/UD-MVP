@@ -102,25 +102,22 @@ identifier:
 output:
   # КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (КАЖДОЕ ПОМЕЩЕНИЕ = 1 СТРОКА)
   listing_columns:
-    - listing_id
-    - object_id
-    - object_name
-    - building_id
-    - building_name
-    - use_type_norm
-    - area_sqm
-    - divisible_from_sqm
-    - floors_norm
-    - market_type
-    - fitout_condition_norm
-    - delivery_date_norm
-    - rent_rate_year_sqm_base
-    - rent_vat_norm
-    - opex_year_per_sqm
-    - opex_included
-    - rent_month_total_gross
-    - sale_price_per_sqm
-    - sale_vat_norm
-    - source_file
-    - request_id
-    - quality_flags
+    - object_name|Объект
+    - building_name|Здание
+    - use_type_norm|Тип использования
+    - area_sqm|Площадь, кв.м.
+    - divisible_from_sqm|Делится от, кв.м.
+    - floors_norm|Этаж
+    - market_type|Новый / Вторичка
+    - fitout_condition_norm|Состояние помещения
+    - delivery_date_norm|Дата передачи
+    - rent_rate_year_sqm_base|Ставка аренды в год за кв.м., руб.
+    - rent_vat_norm|НДС (ставка аренды)
+    - opex_year_per_sqm|OPEX в год за кв.м., руб.
+    - opex_included|OPEX включен
+    - rent_month_total_gross|Ставка аренды в месяц, руб.
+    - sale_price_per_sqm|Цена продажи за кв.м., руб.
+    - sale_vat_norm|НДС (цена продажи)
+    - source_file|Исходный файл
+    - request_id|Идентификатор запроса
+    - quality_flags|Флаги качества

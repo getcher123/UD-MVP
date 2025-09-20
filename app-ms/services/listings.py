@@ -60,7 +60,7 @@ def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, 
     return rows
 
 
-def export_excel(rows: List[Dict[str, Any]], export_path, columns: Sequence[str]) -> None:
+def export_excel(rows: List[Dict[str, Any]], export_path, columns: Sequence[object]) -> None:
     xlsx = build_xlsx(rows, columns=columns)
     write_bytes(export_path, xlsx)
 

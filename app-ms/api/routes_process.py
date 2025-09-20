@@ -130,7 +130,17 @@ async def process_file(
 
     rows = flatten_objects_to_listings(objects, rules, request_id=req_id, source_file=filename)
 
-    columns = rules["output"]["listing_columns"]
+    raw_columns = rules["output"]["listing_columns"]
+    columns: list[object] = []
+    for col in raw_columns:
+        if isinstance(col, str) and "|" in col:
+            key, header = [part.strip() for part in col.split("|", 1)]
+            if not key:
+                continue
+            columns.append((key, header or key))
+        else:
+            columns.append(col)
+
     export_path = build_result_path(req_id, "listings.xlsx", base_dir=settings.RESULTS_DIR)
     xlsx_bytes = build_xlsx(rows, columns=columns)
     write_bytes(export_path, xlsx_bytes)
