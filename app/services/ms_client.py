@@ -1,4 +1,4 @@
-"""Client helpers for microservice interactions."""
+﻿"""Client helpers for microservice interactions."""
 
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ import httpx
 async def process_file(file_path: Path, chat_id: str) -> tuple[bytes, str]:
     """Send file to microservice and return resulting XLSX bytes and filename.
 
-    POST {MICROSERVICE_BASE_URL}/process_file with multipart/form-data (file, chat_id).
-    Timeouts: connect 60s, read 120s.
+    POST {MICROSERVICE_BASE_URL}/process_file with multipart/form-data (file, chat_id).`n    Timeouts: connect 60s, read 300s.
     On success: return (xlsx_bytes, filename) where filename is taken from
     Content-Disposition header if present, otherwise "result.xlsx".
     """
@@ -26,7 +25,7 @@ async def process_file(file_path: Path, chat_id: str) -> tuple[bytes, str]:
 
     url = f"{base_url}/process_file"
 
-    timeout = httpx.Timeout(120.0)
+    timeout = httpx.Timeout(300.0, connect=60.0, read=300.0, write=300.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         with file_path.open("rb") as f:
             files = {"file": (file_path.name, f, "application/octet-stream")}
@@ -58,3 +57,4 @@ def _filename_from_content_disposition(value: str) -> str | None:
     if m:
         return m.group(1)
     return None
+

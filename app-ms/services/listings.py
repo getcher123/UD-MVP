@@ -15,6 +15,15 @@ from services.excel_export import build_xlsx
 from utils.fs import write_bytes
 
 
+def _round_money(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return value
+
+
 def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, Any], request_id: str, source_file: str) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for obj in objects or []:
@@ -44,12 +53,12 @@ def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, 
                     "market_type": core.get("market_type"),
                     "fitout_condition_norm": core.get("fitout_condition_norm"),
                     "delivery_date_norm": core.get("delivery_date_norm"),
-                    "rent_rate_year_sqm_base": deriv.get("rent_rate_year_sqm_base"),
+                    "rent_rate_year_sqm_base": _round_money(core.get("rent_rate") or deriv.get("rent_rate_year_sqm_base")),
                     "rent_vat_norm": core.get("rent_vat_norm"),
-                    "opex_year_per_sqm": core.get("opex_year_per_sqm"),
+                    "opex_year_per_sqm": _round_money(core.get("opex_year_per_sqm")),
                     "opex_included": core.get("opex_included"),
-                    "rent_month_total_gross": deriv.get("rent_month_total_gross"),
-                    "sale_price_per_sqm": core.get("sale_price_per_sqm"),
+                    "rent_month_total_gross": _round_money(deriv.get("rent_month_total_gross")),
+                    "sale_price_per_sqm": _round_money(core.get("sale_price_per_sqm")),
                     "sale_vat_norm": core.get("sale_vat_norm"),
                     "source_file": source_file.split("/")[-1].split("\\")[-1],
                     "request_id": request_id,

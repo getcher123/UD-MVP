@@ -15,6 +15,45 @@ from utils.dates import normalize_delivery_date as _normalize_delivery_date
 StrOrInt = int | str
 
 
+_WS_RE = re.compile(r"\s+")
+
+
+_TOKEN_RE = re.compile(r"[^0-9a-zа-яё%]+")
+
+
+def _clean_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = _WS_RE.sub(" ", str(value)).strip()
+    return text or None
+
+
+def _clean_dict_strings(data: dict | None) -> dict:
+    if not isinstance(data, dict):
+        return {}
+    return {key: (_WS_RE.sub(" ", val).strip() if isinstance(val, str) else val) for key, val in data.items()}
+
+
+
+
+def _get_rule_float(rules: dict, path: list[str]) -> float | None:
+    cur: object = rules
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return None
+        cur = cur[key]
+    try:
+        return float(cur)
+    except (TypeError, ValueError):
+        return None
+
+def _normalize_token(value: Any) -> str | None:
+    text = _clean_str(value)
+    if not text:
+        return None
+    return _TOKEN_RE.sub(" ", text.lower()).strip()
+
+
 # --------- Generic helpers ---------
 
 def to_float(val: Any) -> float | None:
@@ -22,10 +61,35 @@ def to_float(val: Any) -> float | None:
         return None
     if isinstance(val, (int, float)):
         return float(val)
-    s = str(val)
-    s = s.replace("₽", "").replace("$", "").replace("руб", "").replace("р.", "").replace("р", "")
-    s = s.replace("м²", "").replace("/м2", "").replace("/м²", "").replace("/м^2", "").replace("/m2", "")
+
+    s = str(val).strip()
+    if not s:
+        return None
+
+    s = s.replace("\u2212", "-")  # normalize minus sign
+    s = s.replace("\u00A0", "").replace("\u202F", "")  # thin spaces
+    s = s.lower()
+
+    for token in ("₽", "$", "руб", "р.", "р", "rub", "usd", "eur"):
+        s = s.replace(token, "")
+    for token in ("м²", "м2", "/м2", "/м²", "/м^2", "/m2", "sq.m", "sqm"):
+        s = s.replace(token, "")
+
     s = s.replace(" ", "").replace(",", ".")
+    s = re.sub(r"[^0-9.+-]", "", s)
+    if not s:
+        return None
+
+    if s.count('.') > 1:
+        parts = s.split('.')
+        s = ''.join(parts[:-1]) + '.' + parts[-1]
+
+    sign = ''
+    if s[0] in '+-':
+        sign = s[0]
+        s = s[1:]
+    s = sign + s.replace('+', '').replace('-', '')
+
     try:
         return float(s)
     except ValueError:
@@ -33,31 +97,45 @@ def to_float(val: Any) -> float | None:
 
 
 def map_to_canon(value: Any, rules: dict, section: str) -> str | None:
-    if not value:
+    normalized_value = _normalize_token(value)
+    if not normalized_value:
         return None
-    t = str(value).strip().lower()
+
     sec = rules.get("normalization", {}).get(section, {}) or {}
-    for canon in sec.get("canon", []) or []:
-        if t == str(canon).lower():
-            return str(canon)
+
+    def _match(candidate: Any) -> bool:
+        normalized_candidate = _normalize_token(candidate)
+        if not normalized_candidate:
+            return False
+        if normalized_value == normalized_candidate:
+            return True
+        return normalized_candidate in normalized_value
+
     for canon, vals in (sec.get("synonyms", {}) or {}).items():
         for v in vals or []:
-            if t == str(v).lower():
+            if _match(v):
                 return str(canon)
+    for canon in sec.get("canon", []) or []:
+        if _match(canon):
+            return str(canon)
     return None
 
 
 def normalize_vat(value: Any, rules: dict) -> str | None:
     if value is None:
         return None
-    t = str(value).strip().lower()
-    if "включ" in t:
-        return "включен"
-    not_applied = (rules.get("normalization", {}).get("vat", {}) or {}).get("treat_not_applied", [])
-    for token in not_applied or []:
-        if token in t:
+    mapped = map_to_canon(value, rules, "vat")
+    if mapped is not None:
+        return mapped
+    t = _clean_str(value)
+    if not t:
+        return None
+    t_lower = t.lower()
+    vat_rules = rules.get("normalization", {}).get("vat", {}) or {}
+    for token in (vat_rules.get("treat_not_applied") or []):
+        if token.lower() in t_lower:
             return "не применяется"
-    if t in {"не применяется", "без ндс", "усн"}:
+    if t_lower in {"не применяется", "усн"}:
         return "не применяется"
     return None
 
@@ -67,7 +145,10 @@ def boolish(value: Any) -> bool | None:
         return None
     if isinstance(value, bool):
         return value
-    t = str(value).strip().lower()
+    t = _clean_str(value)
+    if not t:
+        return None
+    t = t.lower()
     if t in {"1", "true", "yes", "y", "да", "+"}:
         return True
     if t in {"0", "false", "no", "n", "нет", "-"}:
@@ -140,6 +221,14 @@ def parse_floors(value: Any, cfg: dict) -> list[StrOrInt]:
             n = int(tok)
             if n == -1 and "-1" in special_values:
                 out.append(special_values["-1"])  # подвал
+            else:
+                out.append(n)
+            return
+        match_number = re.search(r"-?\d+", tok)
+        if match_number:
+            n = int(match_number.group())
+            if n == -1 and "-1" in special_values:
+                out.append(special_values["-1"])
             else:
                 out.append(n)
             return
@@ -219,40 +308,71 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
     delivery_date_norm, rent_vat_norm, sale_vat_norm, opex_included,
     opex_year_per_sqm, sale_price_per_sqm, rent_rate (if present).
     """
-    obj_name = parent.get("object_name") if isinstance(parent, dict) else None
-    b_raw = parent.get("building_name") if isinstance(parent, dict) else None
+    parent_clean = _clean_dict_strings(parent if isinstance(parent, dict) else {})
+    src_clean = _clean_dict_strings(src if isinstance(src, dict) else {})
+
+    obj_name = _clean_str(parent_clean.get("object_name"))
+    b_raw = _clean_str(parent_clean.get("building_name"))
     floor_cfg = rules.get("normalization", {})
 
-    use_norm = map_to_canon(src.get("use_type"), rules, "use_type")
-    fit_norm = map_to_canon(src.get("fitout_condition"), rules, "fitout_condition")
-    if fit_norm is None and src.get("fitout_condition"):
+    use_norm = map_to_canon(src_clean.get("use_type"), rules, "use_type")
+    fit_norm = map_to_canon(src_clean.get("fitout_condition"), rules, "fitout_condition")
+    if fit_norm is None and _clean_str(src_clean.get("fitout_condition")):
         # heuristic: any mention of "отдел" w/ positive words → "с отделкой"
-        t = str(src.get("fitout_condition")).lower()
+        t = _clean_str(src_clean.get("fitout_condition")) or ""
+        t = t.lower()
         if "отдел" in t and ("с " in t or "есть" in t or "готово к въезду" in t):
             fit_norm = "с отделкой"
         elif "отдел" in t:
             fit_norm = "под отделку"
 
-    floors = parse_floors(src.get("floor"), floor_cfg)
+    floors = parse_floors(src_clean.get("floor"), floor_cfg)
     floors_norm = render_floors(floors, floor_cfg)
+    min_base_rate = _get_rule_float(rules, ["quality", "outliers", "rent_rate_year_sqm_base", "min"])
+    rent_rate_raw = src_clean.get("rent_rate")
+    rent_rate_value = to_float(rent_rate_raw)
+    if (rent_rate_value is not None and min_base_rate is not None and rent_rate_value < min_base_rate
+            and isinstance(rent_rate_raw, str) and "," in rent_rate_raw):
+        cleaned = (_clean_str(rent_rate_raw) or "").replace(",", "")
+        alt_rate = to_float(cleaned)
+        if alt_rate is not None and alt_rate >= min_base_rate:
+            rent_rate_value = alt_rate
+
+
+    area_val = to_float(src_clean.get("area_sqm"))
+    area_int = int(round(area_val)) if area_val is not None else None
+    divisible_val = to_float(src_clean.get("divisible_from_sqm"))
+    divisible_int = int(round(divisible_val)) if divisible_val is not None else None
+
+    opex_canon = map_to_canon(src_clean.get("opex_included"), rules, "opex_included")
+    if opex_canon in {"включен", "не включен"}:
+        opex_included_value = opex_canon
+    else:
+        bool_val = boolish(src_clean.get("opex_included"))
+        if bool_val is True:
+            opex_included_value = "включен"
+        elif bool_val is False:
+            opex_included_value = "не включен"
+        else:
+            opex_included_value = None
 
     return {
         "object_name": obj_name,
         "building_raw": b_raw,
         "building_token": building_token(b_raw),
         "use_type_norm": use_norm,
-        "area_sqm": to_float(src.get("area_sqm")),
-        "divisible_from_sqm": to_float(src.get("divisible_from_sqm")),
+        "area_sqm": area_int,
+        "divisible_from_sqm": divisible_int,
         "floors_norm": floors_norm,
-        "market_type": src.get("market_type"),
+        "market_type": _clean_str(src_clean.get("market_type")),
         "fitout_condition_norm": fit_norm,
-        "delivery_date_norm": normalize_delivery_date(src.get("delivery_date")),
-        "rent_vat_norm": normalize_vat(src.get("rent_vat"), rules),
-        "sale_vat_norm": normalize_vat(src.get("sale_vat"), rules),
-        "opex_included": boolish(src.get("opex_included")),
-        "opex_year_per_sqm": to_float(src.get("opex_year_per_sqm")),
-        "sale_price_per_sqm": to_float(src.get("sale_price_per_sqm")),
-        "rent_rate": to_float(src.get("rent_rate")),
+        "delivery_date_norm": normalize_delivery_date(src_clean.get("delivery_date")),
+        "rent_vat_norm": normalize_vat(src_clean.get("rent_vat"), rules),
+        "sale_vat_norm": normalize_vat(src_clean.get("sale_vat"), rules),
+        "opex_included": opex_included_value,
+        "opex_year_per_sqm": to_float(src_clean.get("opex_year_per_sqm")),
+        "sale_price_per_sqm": to_float(src_clean.get("sale_price_per_sqm")),
+        "rent_rate": rent_rate_value,
     }
 
 

@@ -11,7 +11,7 @@ from typing import List, Optional
 class Settings:
     AGENTQL_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-5"
+    OPENAI_MODEL: str = "o3"
     DEFAULT_QUERY_PATH: str = "app-ms/queries/default_query.txt"
     CHATGPT_INSTRUCTIONS_PATH: str = "app-ms/config/chatgpt_instructions.txt"
     CHATGPT_SCHEMA_PATH: str = "app-ms/config/chatgpt_schema.json"
@@ -39,7 +39,7 @@ class Settings:
         "aac",
     ])
     APP_AUDIO_URL: Optional[str] = "http://localhost:8001/v1/transcribe"
-    APP_AUDIO_TIMEOUT: float = 60.0
+    APP_AUDIO_TIMEOUT: float = 120.0
     APP_AUDIO_LANGUAGE: Optional[str] = None
     APP_AUDIO_MODEL: Optional[str] = None
     PDF_TMP_DIR: str = "/tmp/pdf"
@@ -89,9 +89,9 @@ def get_settings() -> Settings:
 
     app_audio_timeout_str = os.getenv("APP_AUDIO_TIMEOUT")
     try:
-        app_audio_timeout = float(app_audio_timeout_str) if app_audio_timeout_str else 60.0
+        app_audio_timeout = float(app_audio_timeout_str) if app_audio_timeout_str else 120.0
     except (TypeError, ValueError):
-        app_audio_timeout = 60.0
+        app_audio_timeout = 120.0
 
     pkg_root = Path(__file__).resolve().parents[1]
     default_query_path_fallback = str(pkg_root / "queries" / "default_query.txt")
@@ -102,7 +102,7 @@ def get_settings() -> Settings:
     return Settings(
         AGENTQL_API_KEY=os.getenv("AGENTQL_API_KEY"),
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY"),
-        OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-5"),
+        OPENAI_MODEL=os.getenv("OPENAI_MODEL", "o3"),
         DEFAULT_QUERY_PATH=os.getenv("DEFAULT_QUERY_PATH", default_query_path_fallback),
         CHATGPT_INSTRUCTIONS_PATH=os.getenv("CHATGPT_INSTRUCTIONS_PATH", instructions_path_fallback),
         CHATGPT_SCHEMA_PATH=os.getenv("CHATGPT_SCHEMA_PATH", schema_path_fallback),

@@ -97,6 +97,21 @@ RU_MONTHS = {
 
 NOW_TOKENS = {"сейчас", "свободно", "готово к въезду"}
 
+RU_MONTHS_NOM = {
+    "январь": 1,
+    "февраль": 2,
+    "март": 3,
+    "апрель": 4,
+    "май": 5,
+    "июнь": 6,
+    "июль": 7,
+    "август": 8,
+    "сентябрь": 9,
+    "октябрь": 10,
+    "ноябрь": 11,
+    "декабрь": 12,
+}
+
 
 def quarter_end(year: int, quarter: int) -> date:
     """
@@ -141,7 +156,7 @@ def parse_ru_textual_date(text: str) -> Optional[date]:
     if not m:
         return None
     mon_name = m.group("mon")
-    mon = RU_MONTHS.get(mon_name)
+    mon = _lookup_ru_month(mon_name)
     if not mon:
         return None
     d = int(m.group("d"))
@@ -151,9 +166,36 @@ def parse_ru_textual_date(text: str) -> Optional[date]:
     except ValueError:
         return None
 
+def parse_ru_month_year(text: str) -> Optional[date]:
+    """Parse expressions like "февраль 2025" -> first day of month."""
+    t = re.sub(r"\s+", " ", text.strip().lower())
+    m = re.match(r"^(?P<mon>[а-яё]+)\s+(?P<y>\d{4})$", t)
+    if not m:
+        return None
+    mon = _lookup_ru_month(m.group("mon"))
+    if not mon:
+        return None
+    year = int(m.group("y"))
+    return date(year, mon, 1)
+
+
+
 
 _ROMAN = {"i": 1, "ii": 2, "iii": 3, "iv": 4}
 
+
+
+
+def _lookup_ru_month(token: str) -> int | None:
+    token = token.strip()
+    if not token:
+        return None
+    token = token.lower()
+    if token in RU_MONTHS:
+        return RU_MONTHS[token]
+    if token in RU_MONTHS_NOM:
+        return RU_MONTHS_NOM[token]
+    return None
 
 def _parse_quarter_date_extended(text: str) -> Optional[date]:
     """Extended quarter parser supporting roman numerals and 'квартал' tokens."""
@@ -220,6 +262,11 @@ def normalize_delivery_date(text: Optional[str]) -> Optional[str]:
 
     # textual russian date
     d = parse_ru_textual_date(low)
+    if d:
+        return d.isoformat()
+
+    # month + year (e.g. "февраль 2025")
+    d = parse_ru_month_year(low)
     if d:
         return d.isoformat()
 
