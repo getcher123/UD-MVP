@@ -86,6 +86,64 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         "quality_flags",
     ]
 
+    now_tokens = _read_sequence_from_yaml(p, "now_tokens") or []
+
+    normalization: Dict[str, Any] = {
+        "use_type": {
+            "canon": ["офис", "ритейл", "псн", "склад"],
+            "synonyms": {
+                "офис": ["office", "open space", "офис open space", "open-space", "смешанная", "смешанная планировка", "кабинетная", "кабинетная планировка"],
+                "ритейл": ["retail", "street-retail", "street retail", "стрит-ритейл"],
+                "псн": ["psn", "псн", "помещение свободного назначения", "свободного назначения", "нежилое помещение свободного назначения"],
+                "склад": ["storage", "warehouse", "складское помещение"],
+            },
+        },
+        "fitout_condition": {
+            "canon": ["с отделкой", "под отделку"],
+            "synonyms": {
+                "с отделкой": ["готово к въезду", "с мебелью", "есть отделка"],
+                "под отделку": ["white box", "готово к отделке"],
+            },
+        },
+        "vat": {
+            "canon": ["включен", "не включен", "не применяется"],
+            "synonyms": {
+                "включен": ["включая ндс", "с ндс", "ндс включен", "ставка с ндс"],
+                "не включен": ["без ндс", "без ндс.", "ндс не включен", "не включая ндс", "без ндс (усн)", "без ндс "],
+                "не применяется": ["усн", "освобождено", "не облагается ндс", "0%", "ставка 0%", "освобождение от ндс"],
+            },
+        },
+        "opex_included": {
+            "canon": ["включен", "не включен"],
+            "synonyms": {
+                "включен": ["включая эксплуатационные услуги", "opex включен"],
+                "не включен": ["opex не включен"],
+            },
+        },
+        "floor": {
+            "drop_tokens": ["этаж", "эт", "э."],
+            "map_special": {
+                "basement": ["подвал", "-1"],
+                "socle": ["цоколь"],
+                "mezzanine": ["мезонин"],
+            },
+            "multi": {
+                "enabled": True,
+                "split_separators": [",", ";", "/", " и ", "&"],
+                "range_separators": ["-", "–"],
+                "render": {
+                    "join_token": "; ",
+                    "range_dash": "–",
+                    "sort_numeric_first": True,
+                    "uniq": True,
+                },
+            },
+        },
+    }
+
+    if now_tokens:
+        normalization["dates"] = {"now_tokens": now_tokens}
+
     return {
         "aggregation": {
             "building": {
@@ -93,44 +151,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
                 "source_files": {"unique_join": " | "},
             }
         },
-        "normalization": {
-            "use_type": {
-                "canon": ["офис", "ритейл", "псн", "склад"],
-                "synonyms": {
-                    "офис": ["office", "open space", "офис open space", "open-space"],
-                    "ритейл": ["retail", "street-retail", "street retail", "стрит-ритейл"],
-                    "псн": ["psn", "псн", "помещение свободного назначения", "свободного назначения", "нежилое помещение свободного назначения"],
-                    "склад": ["storage", "warehouse", "складское помещение"]
-                }
-            },
-            "fitout_condition": {"canon": ["с отделкой", "под отделку"], "synonyms": {"с отделкой": ["готово к въезду", "с мебелью", "есть отделка"], "под отделку": ["white box", "готово к отделке"]}},
-            "vat": {
-                "canon": ["включен", "не включен", "не применяется"],
-                "synonyms": {
-                    "включен": ["включая ндс", "с ндс", "ндс включен", "ставка с ндс"],
-                    "не включен": ["без ндс", "без ндс.", "ндс не включен", "не включая ндс", "без ндс (усн)", "без ндс "],
-                    "не применяется": ["усн", "освобождено", "не облагается ндс", "0%", "ставка 0%", "освобождение от ндс"],
-                },
-                "treat_not_applied": ["не применяется", "ставка 0%", "ндс 5%"],
-            },
-            "opex_included": {
-                "canon": ["включен", "не включен"],
-                "synonyms": {
-                    "включен": ["включая эксплуатационные услуги", "opex включен"],
-                    "не включен": ["opex не включен"]
-                }
-            },
-            "floor": {
-                "drop_tokens": ["этаж", "эт", "э."],
-                "map_special": {"basement": ["подвал", "-1"], "socle": ["цоколь"], "mezzanine": ["мезонин"]},
-                "multi": {
-                    "enabled": True,
-                    "split_separators": [",", ";", "/", " и ", "&"],
-                    "range_separators": ["-", "–"],
-                    "render": {"join_token": "; ", "range_dash": "–", "sort_numeric_first": True, "uniq": True},
-                },
-            },
-        },
+        "normalization": normalization,
         "derivation": {
             "rent_rate_year_sqm_base": {
                 "priority": ["direct", "reconstruct_from_month"],
@@ -154,6 +175,3 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
             }
         },
     }
-
-
-__all__ = ["get_rules"]

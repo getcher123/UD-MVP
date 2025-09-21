@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import calendar
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 
 
 # --- Existing helpers kept for compatibility ---
@@ -230,29 +230,24 @@ def to_quarter_end_iso(text: str) -> Optional[str]:
     return d.isoformat() if d else None
 
 
-def normalize_delivery_date(text: Optional[str]) -> Optional[str]:
+def normalize_delivery_date(text: Optional[str], now_tokens: Optional[Iterable[str]] = None) -> Optional[str]:
     """
-    Главная функция нормализации:
-    - None/пусто -> None
-    - now-токены -> 'сейчас'
-    - dd.mm.yyyy / dd/mm/yyyy -> ISO
-    - '12 июля 2025' -> ISO
-    - 'Q3 2026' / '3 кв 2026' / 'III квартал 2026' -> конец квартала (ISO)
-    иначе -> None
-    >>> normalize_delivery_date("свободно")
-    'сейчас'
-    >>> normalize_delivery_date("16/5/2025")
-    '2025-05-16'
-    >>> normalize_delivery_date("III квартал 2026")
-    '2026-09-30'
+    Normalize delivery date strings to ISO format or the canonical token 'сейчас'.
     """
     if text is None:
         return None
     t = text.strip()
     if not t:
         return None
+
+    tokens = {token.lower().strip() for token in NOW_TOKENS}
+    if now_tokens:
+        for token in now_tokens:
+            if token is not None:
+                tokens.add(str(token).lower().strip())
+
     low = t.lower()
-    if low in NOW_TOKENS:
+    if low in tokens:
         return "сейчас"
 
     # explicit numeric formats

@@ -237,7 +237,8 @@ def group_to_buildings(objects: List[Dict[str, Any]], rules: Dict[str, Any], req
                     agg["floors_list"].extend(floors)
 
                 # Dates
-                nd = normalize_delivery_date(lst.get("delivery_date"))
+                now_tokens = _get(rules, ["normalization", "dates", "now_tokens"], [])
+                nd = normalize_delivery_date(lst.get("delivery_date"), now_tokens)
                 if nd == "сейчас":
                     agg["has_now"] = True
                 elif isinstance(nd, str) and nd:

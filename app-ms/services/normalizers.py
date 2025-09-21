@@ -156,8 +156,13 @@ def boolish(value: Any) -> bool | None:
     return None
 
 
-def normalize_delivery_date(value: Any) -> str | None:
-    return _normalize_delivery_date(str(value)) if value is not None else None
+def normalize_delivery_date(value: Any, rules: dict | None = None) -> str | None:
+    if value is None:
+        return None
+    tokens = None
+    if rules is not None:
+        tokens = rules.get("normalization", {}).get("dates", {}).get("now_tokens")
+    return _normalize_delivery_date(str(value), now_tokens=tokens)
 
 
 # --------- Floors parsing/rendering ---------
@@ -366,7 +371,7 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
         "floors_norm": floors_norm,
         "market_type": _clean_str(src_clean.get("market_type")),
         "fitout_condition_norm": fit_norm,
-        "delivery_date_norm": normalize_delivery_date(src_clean.get("delivery_date")),
+        "delivery_date_norm": normalize_delivery_date(src_clean.get("delivery_date"), rules),
         "rent_vat_norm": normalize_vat(src_clean.get("rent_vat"), rules),
         "sale_vat_norm": normalize_vat(src_clean.get("sale_vat"), rules),
         "opex_included": opex_included_value,
