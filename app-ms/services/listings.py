@@ -31,7 +31,12 @@ def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, 
         for b in (obj.get("buildings") or []):
             b_raw = b.get("building_name")
             for lst in (b.get("listings") or []):
-                core = normalize_listing_core(lst, {"object_name": obj_name, "building_name": b_raw}, rules)
+                parent_ctx = {
+                    "object_name": obj_name,
+                    "building_name": b_raw,
+                    "object_rent_vat": obj.get("object_rent_vat"),
+                }
+                core = normalize_listing_core(lst, parent_ctx, rules)
                 deriv = derive_all({**core, **lst}, rules)
 
                 # naming / ids

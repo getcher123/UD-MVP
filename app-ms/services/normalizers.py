@@ -305,6 +305,19 @@ def render_floors(floors: list[StrOrInt], cfg: dict) -> str:
 
 # --------- Listing core normalization ---------
 
+
+
+def _derive_market_type(src: dict, fitout: str | None, rules: dict) -> str | None:
+    raw = _clean_str(src.get("market_type"))
+    if raw:
+        return raw
+    fallbacks = (rules.get("fallbacks", {}) or {}).get("market_type", {})
+    if fitout and isinstance(fallbacks, dict):
+        by_fitout = fallbacks.get("by_fitout") or {}
+        if fitout in by_fitout:
+            return str(by_fitout[fitout])
+    return None
+
 def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
     """
     Normalize a single listing record (no IDs/derivations):
@@ -321,6 +334,8 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
     floor_cfg = rules.get("normalization", {})
 
     use_norm = map_to_canon(src_clean.get("use_type"), rules, "use_type")
+    if not use_norm:
+        use_norm = (rules.get("fallbacks", {}) or {}).get("use_type_norm", {}).get("default")
     fit_norm = map_to_canon(src_clean.get("fitout_condition"), rules, "fitout_condition")
     if fit_norm is None and _clean_str(src_clean.get("fitout_condition")):
         # heuristic: any mention of "отдел" w/ positive words → "с отделкой"
@@ -347,8 +362,17 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
     area_val = to_float(src_clean.get("area_sqm"))
     area_int = int(round(area_val)) if area_val is not None else None
     divisible_val = to_float(src_clean.get("divisible_from_sqm"))
-    divisible_int = int(round(divisible_val)) if divisible_val is not None else None
+    if divisible_val is not None:
+        divisible_int = int(round(divisible_val))
+    else:
+        fallback_cfg = (rules.get("fallbacks", {}) or {}).get("divisible_from_sqm", {})
+        if fallback_cfg.get("copy_from") == "area_sqm" and area_int is not None:
+            divisible_int = area_int
+        else:
+            divisible_int = None
 
+    opex_included_value: Optional[str] = None
+    opex_included_value: Optional[str] = None
     opex_canon = map_to_canon(src_clean.get("opex_included"), rules, "opex_included")
     if opex_canon in {"включен", "не включен"}:
         opex_included_value = opex_canon
@@ -358,8 +382,17 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
             opex_included_value = "включен"
         elif bool_val is False:
             opex_included_value = "не включен"
-        else:
-            opex_included_value = None
+
+    rent_vat_norm = normalize_vat(src_clean.get("rent_vat"), rules)
+    sale_vat_norm = normalize_vat(src_clean.get("sale_vat"), rules)
+    if rent_vat_norm is None and rent_rate_value is not None:
+        rv_fallback = (rules.get("fallbacks", {}) or {}).get("rent_vat_norm", {})
+        if rv_fallback.get("use_listing_vat", True):
+            alt_vat = normalize_vat(src_clean.get("vat"), rules)
+            if alt_vat is not None:
+                rent_vat_norm = alt_vat
+        if rent_vat_norm is None and rv_fallback.get("use_object_rent_vat", True):
+            rent_vat_norm = normalize_vat(parent_clean.get("object_rent_vat"), rules)
 
     return {
         "object_name": obj_name,
@@ -369,11 +402,11 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
         "area_sqm": area_int,
         "divisible_from_sqm": divisible_int,
         "floors_norm": floors_norm,
-        "market_type": _clean_str(src_clean.get("market_type")),
+        "market_type": _derive_market_type(src_clean, fit_norm, rules),
         "fitout_condition_norm": fit_norm,
         "delivery_date_norm": normalize_delivery_date(src_clean.get("delivery_date"), rules),
-        "rent_vat_norm": normalize_vat(src_clean.get("rent_vat"), rules),
-        "sale_vat_norm": normalize_vat(src_clean.get("sale_vat"), rules),
+        "rent_vat_norm": rent_vat_norm,
+        "sale_vat_norm": sale_vat_norm,
         "opex_included": opex_included_value,
         "opex_year_per_sqm": to_float(src_clean.get("opex_year_per_sqm")),
         "sale_price_per_sqm": to_float(src_clean.get("sale_price_per_sqm")),

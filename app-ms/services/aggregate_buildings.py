@@ -72,13 +72,14 @@ from services.derivation import (
     derive_rent_rate_year_sqm_base,
     derive_gross_month_total,
 )
-from services.normalizers import parse_floors, render_floors
+from services.normalizers import parse_floors, render_floors, normalize_vat
 from utils.dates import normalize_delivery_date
 
 
 def _norm_use_type(val: Any, rules: Dict[str, Any]) -> Optional[str]:
     if not val:
-        return None
+        fallback = (rules.get("fallbacks", {}) or {}).get("use_type_norm", {}).get("default")
+        return fallback
     t = str(val).strip().lower()
     nuse = rules.get("normalization", {}).get("use_type", {})
     if not isinstance(nuse, dict):
@@ -116,18 +117,16 @@ def _norm_fitout(val: Any, rules: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _norm_vat(val: Any, rules: Dict[str, Any]) -> Optional[str]:
-    if val is None:
-        return None
-    t = str(val).strip().lower()
-    if "включ" in t:
-        return "включен"
-    not_applied = (rules.get("normalization", {}).get("vat", {}) or {}).get("treat_not_applied", [])
-    for token in not_applied or []:
-        if token in t:
-            return "не применяется"
-    if t in {"не применяется", "без ндс", "усн"}:
-        return "не применяется"
+def _norm_vat(val: Any, rules: Dict[str, Any], fallback_sources: Iterable[Any] = ()) -> Optional[str]:
+    result = normalize_vat(val, rules)
+    if result is not None:
+        return result
+    for source in fallback_sources:
+        if source is None:
+            continue
+        result = normalize_vat(source, rules)
+        if result is not None:
+            return result
     return None
 
 
@@ -220,7 +219,14 @@ def group_to_buildings(objects: List[Dict[str, Any]], rules: Dict[str, Any], req
                 if fit_norm:
                     agg["fitout_condition_counter"][fit_norm] += 1
 
-                rv = _norm_vat(lst.get("rent_vat"), rules)
+                fallback_cfg = (rules.get("fallbacks", {}) or {}).get("rent_vat_norm", {})
+                fallback_sources = []
+                if lst.get("rent_rate") not in (None, "", 0):
+                    if fallback_cfg.get("use_listing_vat", True):
+                        fallback_sources.append(lst.get("vat"))
+                    if fallback_cfg.get("use_object_rent_vat", True):
+                        fallback_sources.append(obj.get("object_rent_vat"))
+                rv = _norm_vat(lst.get("rent_vat"), rules, fallback_sources)
                 if rv:
                     agg["rent_vat_counter"][rv] += 1
                 sv = _norm_vat(lst.get("sale_vat"), rules)

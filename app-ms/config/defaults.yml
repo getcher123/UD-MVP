@@ -94,6 +94,18 @@ quality:
       min: 1000
       max: 200000
 
+fallbacks:
+  rent_vat_norm:
+    use_listing_vat: true
+    use_object_rent_vat: true
+  use_type_norm:
+    default: офис
+  market_type:
+    by_fitout:
+      с отделкой: ранее арендованное
+      под отделку: новое
+
+
 questions:
   fitout_condition: "Уточните отделку: «с отделкой» или «под отделку»?"
   delivery_date: "Уточните дату передачи (ISO YYYY-MM-DD) или «сейчас»."

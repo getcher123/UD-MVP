@@ -4,6 +4,58 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+def _read_mapping_from_yaml(path: Path, key: str) -> Dict[str, Any] | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+    lines = text.splitlines()
+    inside = False
+    base_indent = None
+    stack: list[tuple[int, Dict[str, Any]]] = []
+    mapping: Dict[str, Any] = {}
+
+    for ln in lines:
+        stripped = ln.strip()
+        if not inside:
+            if stripped.startswith(f"{key}:"):
+                inside = True
+                base_indent = len(ln) - len(stripped)
+                stack = [(base_indent, mapping)]
+            continue
+
+        if stripped == "" or stripped.startswith('#'):
+            continue
+
+        indent = len(ln) - len(stripped)
+        if indent <= (base_indent or 0):
+            break
+
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        if not stack:
+            stack = [(base_indent or 0, mapping)]
+        parent = stack[-1][1]
+
+        if ':' not in stripped:
+            continue
+        key_part, value_part = stripped.split(':', 1)
+        key_part = key_part.strip()
+        value_part = value_part.strip()
+        if value_part == "":
+            parent[key_part] = {}
+            stack.append((indent, parent[key_part]))
+        else:
+            val_lower = value_part.lower()
+            if val_lower in {"true", "false"}:
+                value = val_lower == "true"
+            else:
+                value = value_part
+            parent[key_part] = value
+
+    return mapping or None
+
+
 def _read_sequence_from_yaml(path: Path, key: str) -> List[str] | None:
     try:
         text = path.read_text(encoding="utf-8")
@@ -144,6 +196,10 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
     if now_tokens:
         normalization["dates"] = {"now_tokens": now_tokens}
 
+    fallbacks = _read_mapping_from_yaml(p, "fallbacks") or {
+        "rent_vat_norm": {"use_listing_vat": True, "use_object_rent_vat": True}
+    }
+
     return {
         "aggregation": {
             "building": {
@@ -152,6 +208,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
             }
         },
         "normalization": normalization,
+        "fallbacks": fallbacks,
         "derivation": {
             "rent_rate_year_sqm_base": {
                 "priority": ["direct", "reconstruct_from_month"],
