@@ -1,4 +1,4 @@
-﻿# UD-MVP Microservice (app-ms)
+# UD-MVP Microservice (app-ms)
 
 Сервис принимает документы, прогоняет их через AgentQL и формирует нормализованный листинг в Excel/JSON. Файл запускается как HTTP API (FastAPI + Uvicorn) и хранит результаты в `data/results`.
 
@@ -56,36 +56,130 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | Настройки `app-audio` | `APP_AUDIO_URL`, `APP_AUDIO_TIMEOUT`, `APP_AUDIO_LANGUAGE`, `APP_AUDIO_MODEL` |
 
 ## Нормализация данных
-Правила описаны в `app-ms/config/defaults.yml` и автоматически подхватываются при старте.
+Правила описаны в `app-ms/config/defaults.yml` (версия 3) и автоматически подхватываются при старте сервиса.
+
+### Общие числовые правила
+- `numbers.strip_currency = true` — удаляем символы валют перед разбором чисел.
+- `numbers.decimal_comma_to_dot = true` — запятая в числах приводится к точке.
+
+### Площади (area)
+- `area.unit = "sqm"` — площади сохраняются в квадратных метрах.
+
+### Этажи (floor)
+- Игнорируем служебные маркеры: `этаж`, `эт`, `э.`.
+- Спецзначения: `подвал → basement`, `цоколь → socle`, `мезонин → mezzanine`.
+- Множественные значения включены (`multi.enabled = true`):
+  - разделители: `,`, `;`, `/`, ` и `, `&`;
+  - диапазоны: `-`, `–`;
+  - финальный вывод собирается через `; `, для диапазонов используется `–`;
+  - числовые этажи сортируются первыми, дубликаты убираются (`sort_numeric_first = true`, `uniq = true`).
 
 ### Тип использования (use_type)
 | Каноническое значение | Синонимы |
 |-----------------------|----------|
-| `офис` | `office`, `open space`, `офис open space`, `офис open-space`, `офис open space` |
-| `ритейл` | `retail`, `street-retail`, `стрит-ритейл`, `street retail` |
-| `псн` | `psn`, `псн`, `vip`, `помещение свободного назначения` |
-| `склад` | `storage`, `warehouse`, `складское помещение` |
+| `офис` | `office`, `open space`, `офис open space`, `open-space`, `кабинетная`, `офисный`, `студия`, `смешанная` |
+| `ритейл` | `retail`, `street-retail`, `street retail`, `стрит-ритейл`, `торговая` |
+| `псн` | `свободного назначения` |
+| `склад` | `storage`, `warehouse`, `складское` |
 
 ### Состояние отделки (fitout_condition)
 | Каноническое значение | Синонимы |
 |-----------------------|----------|
-| `с отделкой` | `готово к въезду`, `с мебелью`, `есть отделка` |
+| `с отделкой` | `готово к въезду`, `с мебелью`, `есть отделка`, `Выполнен ремонт`, `Полностью готово к` |
 | `под отделку` | `white box`, `готово к отделке` |
 
-### НДС (rent_vat / sale_vat)
+### НДС (vat)
+- Ставка по умолчанию: `default_rate = 0.20`.
+
 | Каноническое значение | Синонимы |
 |-----------------------|----------|
-| `включен` | `включая ндс`, `с ндс`, `ндс включен`, `ставка с ндс` |
-| `не включен` | `без ндс`, `без ндс.`, `без НДС`, `без НДС.`, `ндс не включен`, `не включая ндс`, `без ндс (усн)` |
-| `не применяется` | `усн`, `освобождено`, `освобождение от ндс`, `не облагается ндс`, `0%`, `ставка 0%`, `ндс 5%` |
+| `включен` | `включая НДС`, `с НДС`, `НДС включен`, `ставка с НДС`, `вкл. НДС`, `с учетом НДС` |
+| `не включен` | `без НДС`, `без НДС.`, `без учета НДС`, `НДС не включен`, `не включая НДС` |
+| `не применяется` | `УСН`, `освобождено`, `не облагается НДС`, `НДС 5%`, `без НДС (УСН)` |
 
-### Дополнительные правила
-- Площади (`area_sqm`, `divisible_from_sqm`) округляются до целого.
-- Денежные поля (`rent_rate_year_sqm_base`, `rent_month_total_gross`, `sale_price_per_sqm`, `opex_year_per_sqm`) округляются до целого.
-- Формат даты поставки (`delivery_date_norm`) — ISO `YYYY-MM-DD`; для «Февраль 2025» берётся первое число месяца, для кварталов — последняя дата квартала.
+### OPEX
+| Каноническое значение | Синонимы |
+|-----------------------|----------|
+| `включен` | `включая эксплуатационные услуги`, `opex включен`, `включены`, `коммунальные платежи` |
+| `не включен` | `opex не включен`, `отдельно` |
+
+- По умолчанию OPEX не включён (`opex.default_included = false`), значение `default_year_per_sqm` не задано.
+
+### Даты (dates)
+| Месяц | Код |
+|-------|-----|
+| `январь` | `01` |
+| `февраль` | `02` |
+| `март` | `03` |
+| `апрель` | `04` |
+| `май` | `05` |
+| `июнь` | `06` |
+| `июль` | `07` |
+| `август` | `08` |
+| `сентябрь` | `09` |
+| `октябрь` | `10` |
+| `ноябрь` | `11` |
+| `декабрь` | `12` |
+
+- Кварталы приводятся к последним дням периода: `Q1 → 03-31`, `Q2 → 06-30`, `Q3 → 09-30`, `Q4 → 12-31`.
+- Маркеры актуальности: `сейчас`, `свободно`, `готово к въезду`, `сегодня`.
+
+### Сопоставление (matching)
+- Допуск по площади: `abs_sqm = 2`, `rel_pct = 2.0`.
+- `join_key_listing` строится из `object_id`, `building_token`, `use_type_norm`, `floors_norm`, `area_1dp`.
+
+### Производные значения (derivation)
+- `rent_rate_year_sqm_base.priority = ["direct", "reconstruct_from_month"]`.
+- При реконструкции из месячной ставки учитываются НДС и OPEX (`respect_vat = true`, `respect_opex = true`), используется `vat_fallback = 0.20`, результат округляется до двух знаков (`round_decimals = 2`).
+- `gross_month_total.round_decimals = 2`.
+
+### Контроль качества (quality)
+- `rent_rate_year_sqm_base` помечается как выброс при значениях `< 1000` или `> 200000`.
+
+### Фоллбеки (fallbacks)
+- `rent_vat_norm`: сначала используется НДС из листинга (`use_listing_vat = true`), затем из объекта (`use_object_rent_vat = true`).
+- `use_type_norm` по умолчанию = `офис`.
+- `market_type`: `с отделкой → ранее арендованное`, `под отделку → новое`.
+- `divisible_from_sqm` копирует значение из `area_sqm`.
+
+### Вопросы для уточнения (questions)
+- `fitout_condition`: «Уточните отделку: «с отделкой» или «под отделку»?»
+- `delivery_date`: «Уточните дату передачи (ISO YYYY-MM-DD) или «сейчас».»
+- `rent_rate`: «Подтвердите НДС (включен/не применяется) и OPEX (включён/отдельно, руб/м²/год).»
+- `use_type`: «Уточните тип использования: офис, торговое, псн или склад.»
+
+### Именование (naming)
+- `building.name_compose = "{object_name}{suffix}"`, где `suffix = ", {building_token}"` при наличии токена.
+- `building.id_compose = "{object_id}__{building_token_slug}"`; если токена нет, используется только `object_id`.
+
+### Идентификаторы (identifier)
+- `listing_id.compose_parts = ["object_id", "building_token_slug", "use_type_norm_slug", "floors_norm_slug", "area_1dp"]`.
+- Добавляется хэш по `source_file_basename` (`hash_part = ["source_file_basename"]`, `hash_len = 8`), элементы соединяются через `__`.
 
 ## Формирование Excel
-Столбцы и порядок: `object_name`, `building_name`, `use_type_norm`, `area_sqm`, `divisible_from_sqm`, `floors_norm`, `market_type`, `fitout_condition_norm`, `delivery_date_norm`, `rent_rate_year_sqm_base`, `rent_vat_norm`, `opex_year_per_sqm`, `opex_included`, `rent_month_total_gross`, `sale_price_per_sqm`, `sale_vat_norm`, `source_file`, `request_id`, `quality_flags`.
+Каждое помещение выгружается отдельной строкой. Порядок и заголовки колонок соответствуют `output.listing_columns`:
+
+| Поле | Заголовок |
+|------|-----------|
+| `object_name` | `Объект` |
+| `building_name` | `Здание` |
+| `use_type_norm` | `Тип использования` |
+| `area_sqm` | `Площадь, кв.м.` |
+| `divisible_from_sqm` | `Делится от, кв.м.` |
+| `floors_norm` | `Этаж` |
+| `market_type` | `Новый / Вторичка` |
+| `fitout_condition_norm` | `Состояние помещения` |
+| `delivery_date_norm` | `Дата передачи` |
+| `rent_rate_year_sqm_base` | `Ставка аренды в год за кв.м., руб.` |
+| `rent_vat_norm` | `НДС (ставка аренды)` |
+| `opex_year_per_sqm` | `OPEX в год за кв.м., руб.` |
+| `opex_included` | `OPEX включен` |
+| `rent_month_total_gross` | `Ставка аренды в месяц, руб.` |
+| `sale_price_per_sqm` | `Цена продажи за кв.м., руб.` |
+| `sale_vat_norm` | `НДС (цена продажи)` |
+| `source_file` | `Исходный файл` |
+| `request_id` | `Идентификатор запроса` |
+| `quality_flags` | `Флаги качества` |
 
 Идентификаторы (`listing_id`, `building_id`) формируются по правилам `identifier` из `defaults.yml`.
 
@@ -99,4 +193,3 @@ docker run --rm -p 8000:8000 -v "${PWD}\data:/data" --env-file .env ud-ms:latest
 ## Полезное
 - Тесты см. в `app-ms/tests` (юнит + интеграционные сценарии).
 - Для пересоздания Excel вне сервиса используйте `python app-ms/scripts/json_to_listings_excel.py <json> --request-id <id>`.
-
