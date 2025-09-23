@@ -80,6 +80,28 @@ def to_iso_date(s: str) -> Optional[str]:
 
 # --- New requirements for MS delivery date normalization ---
 
+_LEADING_DATE_PREFIX_PATTERNS = [
+    re.compile(r'^(?:>=|<=|=>|=<|>|<|≈|~)\s*', re.IGNORECASE),
+    re.compile(r'^(?:с|со|от|до|по|c|from|since|starting|start|начиная\s+с)\s+(?=\S)', re.IGNORECASE),
+]
+
+
+def _strip_delivery_prefixes(text: str) -> str:
+    '''Remove auxiliary prefixes (e.g. `с `) before actual date tokens.'''
+    if not text:
+        return text
+    cleaned = text
+    while cleaned:
+        for pattern in _LEADING_DATE_PREFIX_PATTERNS:
+            match = pattern.match(cleaned)
+            if match:
+                cleaned = cleaned[match.end():]
+                break
+        else:
+            break
+    return cleaned.lstrip()
+
+
 RU_MONTHS = {
     "января": 1,
     "февраля": 2,
@@ -95,7 +117,7 @@ RU_MONTHS = {
     "декабря": 12,
 }
 
-NOW_TOKENS = {"сейчас", "свободно", "готово к въезду"}
+NOW_TOKENS = {"сейчас", "свободно", "готово к въезду", "сегодня"}
 
 RU_MONTHS_NOM = {
     "январь": 1,
@@ -237,6 +259,10 @@ def normalize_delivery_date(text: Optional[str], now_tokens: Optional[Iterable[s
     if text is None:
         return None
     t = text.strip()
+    if not t:
+        return None
+
+    t = _strip_delivery_prefixes(t)
     if not t:
         return None
 
