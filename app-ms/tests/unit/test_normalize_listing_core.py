@@ -18,12 +18,7 @@ def _load_rules() -> dict:
 
 def test_normalize_listing_core_basic() -> None:
     rules = _load_rules()
-    src = {
-        "use_type": "office",
-        "area_sqm": "100,0",
-        "floor": "1-2",
-        "fitout_condition": "готово к въезду",
-    }
+    src = {"use_type": "office", "area_sqm": "100,0", "floor": "1-2", "fitout_condition": "готово к въезду"}
     parent = {"object_name": "БЦ", "building_name": "ул. Ленина, 1"}
     core = normalize_listing_core(src, parent, rules)
     assert core["object_name"] == "БЦ"
@@ -65,3 +60,11 @@ def test_opex_included_respects_explicit_value() -> None:
     parent: dict = {}
     result = normalize_listing_core(src, parent, rules)
     assert result["opex_included"] == "включен"
+
+
+def test_rent_vat_matches_partial_synonym() -> None:
+    rules = _load_rules()
+    src = {"rent_vat": None, "vat": "На все суммы начисляется НДС по действующей ставке"}
+    parent: dict = {}
+    result = normalize_listing_core(src, parent, rules)
+    assert result["rent_vat_norm"] == "не включен"

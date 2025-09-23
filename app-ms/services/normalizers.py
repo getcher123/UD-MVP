@@ -127,6 +127,19 @@ def normalize_vat(value: Any, rules: dict) -> str | None:
     mapped = map_to_canon(value, rules, "vat")
     if mapped is not None:
         return mapped
+
+    normalized_value = _normalize_token(value)
+    fallback_partials = (rules.get("fallbacks", {}) or {}).get("vat_partial_synonyms", {})
+    if normalized_value and isinstance(fallback_partials, dict):
+        for canon, tokens in fallback_partials.items():
+            if not tokens:
+                continue
+            token_iterable = tokens if isinstance(tokens, (list, tuple)) else [tokens]
+            for token in token_iterable:
+                norm_token = _normalize_token(token)
+                if norm_token and norm_token in normalized_value:
+                    return str(canon)
+
     t = _clean_str(value)
     if not t:
         return None
@@ -393,7 +406,7 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
 
     rent_vat_norm = normalize_vat(src_clean.get("rent_vat"), rules)
     sale_vat_norm = normalize_vat(src_clean.get("sale_vat"), rules)
-    if rent_vat_norm is None and rent_rate_value is not None:
+    if rent_vat_norm is None:
         rv_fallback = (rules.get("fallbacks", {}) or {}).get("rent_vat_norm", {})
         if rv_fallback.get("use_listing_vat", True):
             alt_vat = normalize_vat(src_clean.get("vat"), rules)
