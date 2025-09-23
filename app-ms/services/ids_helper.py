@@ -142,9 +142,16 @@ def compose_building_name(object_name: str, raw_building_name: str | None, rules
     Compose building display name according to template
     `aggregation.building.name.compose` where suffix is `, {token}` if token exists.
     """
+    raw_clean = str(raw_building_name).strip() if raw_building_name else ""
+    obj_clean = (object_name or "").strip()
+    if raw_clean and obj_clean and obj_clean.lower() in raw_clean.lower():
+        return raw_clean
+
     token = building_token(raw_building_name)
-    suffix = f", {token}" if token else ""
-    # Fetch template if provided; default to "{object_name}{suffix}"
+    suffix = ""
+    if token:
+        if not (obj_clean and token.lower() in obj_clean.lower()):
+            suffix = f", {token}"
     template = (
         rules.get("aggregation", {})
         .get("building", {})
@@ -153,7 +160,8 @@ def compose_building_name(object_name: str, raw_building_name: str | None, rules
         if isinstance(rules, dict)
         else "{object_name}{suffix}"
     )
-    return template.format(object_name=object_name, suffix=suffix)
+    base_name = obj_clean or object_name
+    return template.format(object_name=base_name, suffix=suffix) if template else (raw_clean or base_name)
 
 
 __all__ = [

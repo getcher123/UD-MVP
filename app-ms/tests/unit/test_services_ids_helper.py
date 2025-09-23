@@ -50,3 +50,14 @@ def test_ids_and_composed_name():
     assert building_id(obj2, None) == "kometa"
     assert compose_building_name(obj2, None, rules) == "Комета"
 
+
+def test_compose_building_name_no_duplicate_object() -> None:
+    rules = {"aggregation": {"building": {"name": {"compose": "{object_name}{suffix}"}}}}
+    assert compose_building_name("ROMANOV DVOR", "ROMANOV DVOR I", rules) == "ROMANOV DVOR I"
+    # case-insensitive containment
+    assert compose_building_name("Романов Двор", "романов двор корпус а", rules) == "романов двор корпус а"
+
+
+def test_compose_building_name_object_contains_token() -> None:
+    rules = {"aggregation": {"building": {"name": {"compose": "{object_name}{suffix}"}}}}
+    assert compose_building_name("Ул. Самокатная д. 1 стр. 1", "стр. 1", rules) == "Ул. Самокатная д. 1 стр. 1"
