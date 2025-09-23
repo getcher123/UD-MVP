@@ -6,7 +6,7 @@ plus floor parsing/rendering utilities.
 """
 
 import re
-from typing import Any, Iterable, Tuple
+from typing import Any, Iterable, Optional, Tuple
 
 from services.ids_helper import building_token
 from utils.dates import normalize_delivery_date as _normalize_delivery_date
@@ -371,7 +371,8 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
         else:
             divisible_int = None
 
-    opex_included_value: Optional[str] = None
+    opex_year_val = to_float(src_clean.get("opex_year_per_sqm"))
+
     opex_included_value: Optional[str] = None
     opex_canon = map_to_canon(src_clean.get("opex_included"), rules, "opex_included")
     if opex_canon in {"включен", "не включен"}:
@@ -382,6 +383,13 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
             opex_included_value = "включен"
         elif bool_val is False:
             opex_included_value = "не включен"
+
+    if opex_included_value is None and opex_year_val is not None:
+        opex_fallback = (rules.get("fallbacks", {}) or {}).get("opex_included", {})
+        if isinstance(opex_fallback, dict):
+            default_opex_label = opex_fallback.get("set_when_year_per_sqm_present")
+            if default_opex_label is not None:
+                opex_included_value = str(default_opex_label)
 
     rent_vat_norm = normalize_vat(src_clean.get("rent_vat"), rules)
     sale_vat_norm = normalize_vat(src_clean.get("sale_vat"), rules)
@@ -408,7 +416,7 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
         "rent_vat_norm": rent_vat_norm,
         "sale_vat_norm": sale_vat_norm,
         "opex_included": opex_included_value,
-        "opex_year_per_sqm": to_float(src_clean.get("opex_year_per_sqm")),
+        "opex_year_per_sqm": opex_year_val,
         "sale_price_per_sqm": to_float(src_clean.get("sale_price_per_sqm")),
         "rent_rate": rent_rate_value,
     }
