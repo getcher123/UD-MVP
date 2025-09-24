@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sys
 from pathlib import Path
@@ -20,15 +20,15 @@ from services.ids_helper import (  # type: ignore  # noqa: E402
 )
 
 
-def test_slug_transliteration_and_cleanup():
+def test_slug_transliteration_and_cleanup() -> None:
     assert slug("Башня на Набережной") == "bashnya-na-naberezhnoy"
     assert slug("стр. 1") == "str-1"
     assert slug("Литера Б") == "litera-b"
 
 
-def test_building_tokens_extraction():
+def test_building_tokens_extraction() -> None:
     assert building_token("стр. 1") == "стр. 1"
-    assert building_token("Стр1") == "стр. 1" or building_token("Стр1") == "Стр1"  # tolerant
+    assert building_token("Стр1") in {"стр. 1", "Стр1"}  # tolerant
     assert building_token("литера б") == "литера Б"
     assert building_token("корпус 2") == "корпус 2"
     assert building_token("блок c") == "блок C"
@@ -36,7 +36,7 @@ def test_building_tokens_extraction():
     assert building_token("") is None
 
 
-def test_ids_and_composed_name():
+def test_ids_and_composed_name() -> None:
     rules = {"aggregation": {"building": {"name": {"compose": "{object_name}{suffix}"}}}}
     obj = "Башня на Набережной"
     raw = "стр. 1"

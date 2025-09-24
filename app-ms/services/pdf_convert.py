@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import img2pdf
 
@@ -13,8 +13,9 @@ from core.config import get_settings
 from core.errors import ErrorCode, ServiceError
 from utils.fs import ensure_dir, safe_name
 
-
 logger = logging.getLogger("service.pdf")
+
+UNO_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "uno_set_borders.py"
 
 
 def _validate_input(path: Path) -> None:
@@ -60,33 +61,80 @@ def _convert_image_to_pdf(input_path: Path, out_dir: Path) -> Path:
     return out_pdf
 
 
+def _find_soffice() -> Path:
+    soffice_env = os.getenv("SOFFICE_PATH")
+    candidates = [
+        Path(soffice_env) if soffice_env else None,
+        Path(shutil.which("soffice")) if shutil.which("soffice") else None,
+        Path(shutil.which("libreoffice")) if shutil.which("libreoffice") else None,
+        Path(r"C:\\Program Files\\LibreOffice\\program\\soffice.exe"),
+        Path(r"C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe"),
+    ]
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            return candidate
+    raise ServiceError(
+        ErrorCode.PDF_CONVERSION_ERROR,
+        422,
+        "LibreOffice (soffice) not found. Install LibreOffice or set SOFFICE_PATH to soffice executable.",
+    )
+
+
+def _find_libreoffice_python(soffice: Path) -> Optional[Path]:
+    program_dir = soffice.parent
+    # Typical layout: <LibreOffice>/program/soffice
+    candidates = [
+        program_dir / "python.exe",
+        program_dir / "python",
+        program_dir.parent / "program" / "python.exe",
+        program_dir.parent / "program" / "python",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _prepare_excel_with_uno(input_path: Path, soffice: Path) -> Path:
+    lo_python = _find_libreoffice_python(soffice)
+    if not lo_python:
+        logger.warning("LibreOffice python interpreter not found; skipping UNO border formatting")
+        return input_path
+
+    if not UNO_SCRIPT.exists():
+        logger.warning("UNO border script is missing; skipping border formatting", extra={"script": str(UNO_SCRIPT)})
+        return input_path
+
+    bordered_path = input_path.parent / f"{input_path.stem}_bordered{input_path.suffix}"
+    cmd = [
+        str(lo_python),
+        str(UNO_SCRIPT),
+        str(input_path),
+        str(bordered_path),
+        "1.0",
+    ]
+    logger.info("Applying UNO border formatting", extra={"cmd": cmd})
+    try:
+        subprocess.run(cmd, check=True)
+    except Exception as exc:
+        logger.warning("Failed to apply UNO border formatting", extra={"error": str(exc)})
+        return input_path
+
+    if bordered_path.exists():
+        return bordered_path
+    logger.warning("UNO border script did not produce output; using original file", extra={"expected": str(bordered_path)})
+    return input_path
+
+
 def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
     """Convert DOCX/PPTX/XLSX to PDF using LibreOffice (soffice).
 
-    On Windows/macOS, tries common installation paths if soffice is not in PATH.
-    You can override the path by setting the SOFFICE_PATH environment variable.
+    The SOFFICE_PATH environment variable may be used to override the auto-detected executable.
     """
-    # Locate soffice (allow override via env)
-    soffice_env = os.getenv("SOFFICE_PATH")
-    soffice = soffice_env or shutil.which("soffice") or shutil.which("libreoffice")
+    soffice = _find_soffice()
 
-    if not soffice:
-        # Try common Windows locations
-        candidates = [
-            r"C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-            r"C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
-        ]
-        for c in candidates:
-            if Path(c).exists():
-                soffice = c
-                break
-
-    if not soffice:
-        raise ServiceError(
-            ErrorCode.PDF_CONVERSION_ERROR,
-            422,
-            "LibreOffice (soffice) not found. Install LibreOffice or set SOFFICE_PATH to soffice executable.",
-        )
+    if input_path.suffix.lower() == ".xlsx":
+        input_path = _prepare_excel_with_uno(input_path, soffice)
 
     ensure_dir(out_dir)
     logger.info(
@@ -105,30 +153,21 @@ def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
         logger.exception("Failed to invoke soffice", extra={"src": str(input_path)})
         raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to run soffice: {e}")
 
-    rc = result if isinstance(result, int) else getattr(result, "returncode", None)
-    stdout = "" if isinstance(result, int) else getattr(result, "stdout", "")
-    stderr = "" if isinstance(result, int) else getattr(result, "stderr", "")
+    rc = getattr(result, "returncode", None)
+    stdout = getattr(result, "stdout", "")
+    stderr = getattr(result, "stderr", "")
     logger.info(
         "Soffice finished",
         extra={"returncode": rc, "stdout": str(stdout)[-500:], "stderr": str(stderr)[-500:]},
     )
 
-    # Expected output file path
     out_pdf = out_dir / f"{input_path.stem}.pdf"
-    if (rc is None or rc != 0) or not out_pdf.exists():
+    if rc != 0 or not out_pdf.exists():
         raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, "Failed to convert document to PDF")
     return out_pdf
 
 
 def to_pdf(input_path: str, out_dir: str) -> str:
-    """Convert the given file to PDF and return the resulting path.
-
-    - If input is already a PDF, returns the original path.
-    - Images (jpg/jpeg/png) are converted using img2pdf into a single PDF.
-    - Office docs (docx/pptx/xlsx) are converted via LibreOffice `soffice`.
-    - Validates extension and size using settings.
-    - Logs each step with context-rich JSON lines.
-    """
     src = Path(input_path)
     out = Path(out_dir)
 
@@ -150,17 +189,10 @@ def to_pdf(input_path: str, out_dir: str) -> str:
         logger.info("Office document converted to PDF", extra={"dest": str(out_pdf)})
         return str(out_pdf)
 
-    # Should not reach here because of validation; act defensively
     logger.error("Unhandled file extension", extra={"ext": ext})
     raise ServiceError(ErrorCode.UNSUPPORTED_TYPE, 400, f"Unsupported file type: {ext}")
 
 
 async def ensure_pdf(input_bytes: bytes, filename: str | None = None) -> Tuple[bytes, str]:
-    """Ensure the content is PDF; if not, convert it (stub for in-memory paths).
-
-    This async helper remains a stub for now, useful for future upload flows
-    where conversion happens in-memory.
-    Returns (pdf_bytes, pdf_name).
-    """
     name = (filename or "document").rsplit(".", 1)[0] + ".pdf"
     return input_bytes, name
