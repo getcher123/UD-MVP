@@ -19,9 +19,13 @@ class Settings:
     MAX_FILE_MB: int = 20
     ALLOW_TYPES: List[str] = field(default_factory=lambda: [
         "pdf",
+        "doc",
         "docx",
+        "ppt",
         "pptx",
+        "xls",
         "xlsx",
+        "txt",
         "jpg",
         "jpeg",
         "png",
@@ -66,9 +70,13 @@ def get_settings() -> Settings:
         "ALLOW_TYPES",
         [
             "pdf",
+            "doc",
             "docx",
+            "ppt",
             "pptx",
+            "xls",
             "xlsx",
+            "txt",
             "jpg",
             "jpeg",
             "png",
@@ -123,3 +131,4 @@ def get_settings() -> Settings:
 
 
 __all__ = ["Settings", "get_settings"]
+

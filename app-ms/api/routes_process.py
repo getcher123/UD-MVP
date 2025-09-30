@@ -4,7 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, Response
 
@@ -41,6 +41,64 @@ def _persist_json(data: dict, req_id: str, name: str) -> None:
         pass
 
 
+def _get_pipeline_cfg(rules: Mapping[str, Any]) -> Mapping[str, Any]:
+    pipeline = rules.get("pipeline") if isinstance(rules, Mapping) else None
+    return pipeline if isinstance(pipeline, Mapping) else {}
+
+
+def _get_format_cfg(pipeline_cfg: Mapping[str, Any], fmt: str) -> Mapping[str, Any]:
+    raw = pipeline_cfg.get(fmt) if isinstance(pipeline_cfg, Mapping) else None
+    return raw if isinstance(raw, Mapping) else {}
+
+
+def _get_stage_cfg(pipeline_cfg: Mapping[str, Any], fmt: str, stage: str) -> Mapping[str, Any]:
+    cfg: dict[str, Any] = {}
+    common = pipeline_cfg.get("common") if isinstance(pipeline_cfg, Mapping) else None
+    if isinstance(common, Mapping):
+        stage_common = common.get(stage)
+        if isinstance(stage_common, Mapping):
+            cfg.update(stage_common)
+    fmt_cfg = pipeline_cfg.get(fmt) if isinstance(pipeline_cfg, Mapping) else None
+    if isinstance(fmt_cfg, Mapping):
+        stage_specific = fmt_cfg.get(stage)
+        if isinstance(stage_specific, Mapping):
+            cfg.update(stage_specific)
+    return cfg
+
+
+def _cfg_enabled(cfg: Mapping[str, Any] | None, default: bool = True) -> bool:
+    if not isinstance(cfg, Mapping):
+        return default
+    enabled = cfg.get("enabled")
+    if enabled is None:
+        return default
+    if isinstance(enabled, bool):
+        return enabled
+    if isinstance(enabled, (int, float)):
+        return bool(enabled)
+    if isinstance(enabled, str):
+        return enabled.strip().lower() not in {"0", "false", "no", "off"}
+    return default
+
+
+def _detect_format(ext: str, is_audio: bool) -> str:
+    if is_audio:
+        return "audio"
+    if ext in {"doc", "docx"}:
+        return "doc"
+    if ext in {"ppt", "pptx"}:
+        return "ppt"
+    if ext in {"xls", "xlsx"}:
+        return "excel"
+    if ext == "pdf":
+        return "pdf"
+    if ext in {"jpg", "jpeg", "png"}:
+        return "image"
+    if ext == "txt":
+        return "txt"
+    return "doc"
+
+
 @router.post("/process_file")
 async def process_file(
     file: UploadFile = File(...),
@@ -66,11 +124,24 @@ async def process_file(
     ext = file_ext(src_path)
     is_audio = ext in settings.AUDIO_TYPES
 
+    rules = get_rules(settings.RULES_PATH)
+    pipeline_cfg = _get_pipeline_cfg(rules)
+    fmt_key = _detect_format(ext, is_audio)
+    format_cfg = _get_format_cfg(pipeline_cfg, fmt_key)
+
+    pipeline_steps: list[str] = []
+    if fmt_key:
+        pipeline_steps.append(fmt_key)
+
     payload: dict[str, object]
     pending_questions: list[dict[str, object]] = []
-    pipeline_marker = "audio_chatgpt" if is_audio else "document_agentql"
+    agentql_mode_meta: Optional[str] = None
 
     if is_audio:
+        transcription_cfg = _get_stage_cfg(pipeline_cfg, "audio", "transcription")
+        if not _cfg_enabled(transcription_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "Audio transcription disabled via configuration")
+
         transcription = transcribe_audio(data, filename, settings)
         _persist_json(transcription, req_id, "app_audio_response.json")
 
@@ -84,15 +155,35 @@ async def process_file(
         except Exception:  # pragma: no cover - diagnostics helper
             pass
 
-        payload = extract_structured_objects(srt)
-        _persist_json(payload, req_id, "chatgpt_structured.json")
+        pipeline_steps.append("transcription")
+
+        chatgpt_cfg = _get_stage_cfg(pipeline_cfg, "audio", "chatgpt_structured")
+        if _cfg_enabled(chatgpt_cfg, True):
+            payload = extract_structured_objects(srt)
+            pipeline_steps.append("chatgpt_structured")
+            _persist_json(payload, req_id, "chatgpt_structured.json")
+        else:
+            payload = {"objects": []}
+            pipeline_steps.append("chatgpt_skip")
     else:
-        try:
-            pdf_path = to_pdf(str(src_path), settings.PDF_TMP_DIR)
-        except ServiceError:
-            raise
-        except Exception as e:  # noqa: BLE001
-            raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to convert to PDF: {e}")
+        pdf_stage_cfg = _get_stage_cfg(pipeline_cfg, fmt_key, "pdf_conversion")
+        pdf_enabled_default = fmt_key != "pdf"
+        if _cfg_enabled(pdf_stage_cfg, pdf_enabled_default):
+            try:
+                pdf_path = to_pdf(str(src_path), settings.PDF_TMP_DIR, format_cfg, pdf_stage_cfg)
+            except ServiceError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to convert to PDF: {e}")
+            pipeline_steps.append("pdf_conversion")
+        else:
+            if ext != "pdf":
+                raise ServiceError(
+                    ErrorCode.PDF_CONVERSION_ERROR,
+                    503,
+                    f"PDF conversion disabled for format '{fmt_key}'",
+                )
+            pdf_path = str(src_path)
 
         try:
             pdf_src = Path(pdf_path)
@@ -111,49 +202,81 @@ async def process_file(
                 raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Default query not found: {qpath}")
             query_text = qpath.read_text(encoding="utf-8")
 
-        try:
-            aql_resp = run_agentql(pdf_path, query_text, mode="standard")
-        except ServiceError:
-            raise
-        except Exception as e:  # noqa: BLE001
-            raise ServiceError(ErrorCode.AGENTQL_ERROR, 424, f"AgentQL failed: {e}")
+        agentql_stage_cfg = _get_stage_cfg(pipeline_cfg, fmt_key, "agentql")
+        if _cfg_enabled(agentql_stage_cfg, True):
+            agentql_kwargs: dict[str, Any] = {}
+            mode_value = agentql_stage_cfg.get("mode")
+            if isinstance(mode_value, str) and mode_value.strip():
+                agentql_kwargs["mode"] = mode_value.strip()
+            else:
+                agentql_kwargs["mode"] = "standard"
+            timeout_value = agentql_stage_cfg.get("timeout_sec")
+            if timeout_value is not None:
+                try:
+                    agentql_kwargs["timeout_sec"] = float(timeout_value)
+                except (TypeError, ValueError):
+                    pass
 
-        if isinstance(aql_resp, dict):
-            _persist_json(aql_resp, req_id, "agentql.json")
-            payload = aql_resp
+            agentql_mode_meta = agentql_kwargs.get("mode")
+
+            try:
+                aql_resp = run_agentql(pdf_path, query_text, **agentql_kwargs)
+            except ServiceError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                raise ServiceError(ErrorCode.AGENTQL_ERROR, 424, f"AgentQL failed: {e}")
+
+            pipeline_steps.append("agentql")
+
+            if isinstance(aql_resp, dict):
+                _persist_json(aql_resp, req_id, "agentql.json")
+                payload = aql_resp
+            else:
+                _persist_json({"data": aql_resp}, req_id, "agentql.json")
+                payload = {}
         else:
-            _persist_json({"data": aql_resp}, req_id, "agentql.json")
-            payload = {}
+            payload = {"objects": []}
+            pipeline_steps.append("agentql_skip")
 
-    rules = get_rules(settings.RULES_PATH)
     objects, pending_questions = normalize_agentql_payload(payload, rules)
 
     rows = flatten_objects_to_listings(objects, rules, request_id=req_id, source_file=filename)
 
-    raw_columns = rules["output"]["listing_columns"]
-    columns: list[object] = []
-    for col in raw_columns:
-        if isinstance(col, str) and "|" in col:
-            key, header = [part.strip() for part in col.split("|", 1)]
-            if not key:
-                continue
-            columns.append((key, header or key))
-        else:
-            columns.append(col)
+    excel_stage_cfg = _get_stage_cfg(pipeline_cfg, "postprocess", "excel_export")
+    excel_enabled = _cfg_enabled(excel_stage_cfg, True)
 
-    export_path = build_result_path(req_id, "listings.xlsx", base_dir=settings.RESULTS_DIR)
-    xlsx_bytes = build_xlsx(rows, columns=columns)
-    write_bytes(export_path, xlsx_bytes)
+    columns: list[object] = []
+    xlsx_bytes: bytes | None = None
+    export_path = None
+    if excel_enabled:
+        raw_columns = rules["output"]["listing_columns"]
+        for col in raw_columns:
+            if isinstance(col, str) and "|" in col:
+                key, header = [part.strip() for part in col.split("|", 1)]
+                if not key:
+                    continue
+                columns.append((key, header or key))
+            else:
+                columns.append(col)
+        export_path = build_result_path(req_id, "listings.xlsx", base_dir=settings.RESULTS_DIR)
+        xlsx_bytes = build_xlsx(rows, columns=columns)
+        write_bytes(export_path, xlsx_bytes)
+        pipeline_steps.append("excel_export")
 
     elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
     listings_total = len(rows)
+
+    pipeline_marker = "_".join(step for step in pipeline_steps if step)
+
     excel_url = None
-    if settings.BASE_URL:
+    if excel_enabled and settings.BASE_URL and export_path is not None:
         base = settings.BASE_URL.rstrip("/")
         excel_url = f"{base}/results/{req_id}/listings.xlsx"
 
     out_mode = (output or "excel").lower()
     if out_mode == "excel":
+        if not excel_enabled or xlsx_bytes is None:
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "Excel export disabled via configuration")
         headers = {"Content-Disposition": 'attachment; filename="listings.xlsx"'}
         return Response(
             content=xlsx_bytes,
@@ -172,7 +295,7 @@ async def process_file(
             "listings_total": listings_total,
             "timing_ms": elapsed_ms,
             "pipeline": pipeline_marker,
-            "agentql_mode": "standard" if not is_audio else None,
+            "agentql_mode": agentql_mode_meta,
         },
     }
 

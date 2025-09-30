@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
 
 import img2pdf
 
@@ -18,6 +18,28 @@ logger = logging.getLogger("service.pdf")
 UNO_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "uno_set_borders.py"
 
 
+
+
+def _config_enabled(cfg: Mapping[str, Any] | None, default: bool = True) -> bool:
+    if not isinstance(cfg, Mapping):
+        return default
+    enabled = cfg.get("enabled")
+    if enabled is None:
+        return default
+    if isinstance(enabled, bool):
+        return enabled
+    if isinstance(enabled, (int, float)):
+        return bool(enabled)
+    if isinstance(enabled, str):
+        return enabled.strip().lower() not in {"0", "false", "no", "off"}
+    return default
+
+
+def _config_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 def _validate_input(path: Path) -> None:
     settings = get_settings()
     if not path.exists() or not path.is_file():
@@ -61,7 +83,11 @@ def _convert_image_to_pdf(input_path: Path, out_dir: Path) -> Path:
     return out_pdf
 
 
-def _find_soffice() -> Path:
+def _find_soffice(override: str | None = None) -> Path:
+    if override:
+        candidate = Path(override)
+        if candidate.exists():
+            return candidate
     soffice_env = os.getenv("SOFFICE_PATH")
     candidates = [
         Path(soffice_env) if soffice_env else None,
@@ -95,7 +121,28 @@ def _find_libreoffice_python(soffice: Path) -> Optional[Path]:
     return None
 
 
-def _prepare_excel_with_uno(input_path: Path, soffice: Path) -> Path:
+def _prepare_excel_with_uno(
+    input_path: Path,
+    soffice: Path,
+    format_cfg: Mapping[str, Any] | None,
+) -> Path:
+    uno_cfg: Mapping[str, Any] | None = None
+    if isinstance(format_cfg, Mapping):
+        raw = format_cfg.get("uno_borders")
+        if isinstance(raw, Mapping):
+            uno_cfg = raw
+
+    if not _config_enabled(uno_cfg, True):
+        logger.info(
+            "UNO border formatting disabled via config",
+            extra={"path": str(input_path)},
+        )
+        return input_path
+
+    width_pt = _config_float((uno_cfg or {}).get("width_pt", 1.0), 1.0)
+    if width_pt < 0:
+        width_pt = 0.0
+
     lo_python = _find_libreoffice_python(soffice)
     if not lo_python:
         logger.warning("LibreOffice python interpreter not found; skipping UNO border formatting")
@@ -111,9 +158,12 @@ def _prepare_excel_with_uno(input_path: Path, soffice: Path) -> Path:
         str(UNO_SCRIPT),
         str(input_path),
         str(bordered_path),
-        "1.0",
+        f"{width_pt}",
     ]
-    logger.info("Applying UNO border formatting", extra={"cmd": cmd})
+    logger.info(
+        "Applying UNO border formatting",
+        extra={"cmd": cmd, "line_width_pt": width_pt},
+    )
     try:
         subprocess.run(cmd, check=True)
     except Exception as exc:
@@ -126,15 +176,26 @@ def _prepare_excel_with_uno(input_path: Path, soffice: Path) -> Path:
     return input_path
 
 
-def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
+def _convert_office_to_pdf(
+    input_path: Path,
+    out_dir: Path,
+    format_cfg: Mapping[str, Any] | None,
+    stage_cfg: Mapping[str, Any] | None,
+) -> Path:
     """Convert DOCX/PPTX/XLSX to PDF using LibreOffice (soffice).
 
     The SOFFICE_PATH environment variable may be used to override the auto-detected executable.
     """
-    soffice = _find_soffice()
+    soffice_override = None
+    if isinstance(stage_cfg, Mapping):
+        override_raw = stage_cfg.get("soffice_path") or stage_cfg.get("engine_path")
+        if isinstance(override_raw, str) and override_raw.strip():
+            soffice_override = override_raw.strip()
+
+    soffice = _find_soffice(soffice_override)
 
     if input_path.suffix.lower() == ".xlsx":
-        input_path = _prepare_excel_with_uno(input_path, soffice)
+        input_path = _prepare_excel_with_uno(input_path, soffice, format_cfg)
 
     ensure_dir(out_dir)
     logger.info(
@@ -167,7 +228,12 @@ def _convert_office_to_pdf(input_path: Path, out_dir: Path) -> Path:
     return out_pdf
 
 
-def to_pdf(input_path: str, out_dir: str) -> str:
+def to_pdf(
+    input_path: str,
+    out_dir: str,
+    format_cfg: Mapping[str, Any] | None = None,
+    stage_cfg: Mapping[str, Any] | None = None,
+) -> str:
     src = Path(input_path)
     out = Path(out_dir)
 
@@ -184,8 +250,8 @@ def to_pdf(input_path: str, out_dir: str) -> str:
         logger.info("Image converted to PDF", extra={"dest": str(out_pdf)})
         return str(out_pdf)
 
-    if ext in {"docx", "pptx", "xlsx"}:
-        out_pdf = _convert_office_to_pdf(src, out)
+    if ext in {"doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt"}:
+        out_pdf = _convert_office_to_pdf(src, out, format_cfg, stage_cfg)
         logger.info("Office document converted to PDF", extra={"dest": str(out_pdf)})
         return str(out_pdf)
 

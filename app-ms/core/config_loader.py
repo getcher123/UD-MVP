@@ -202,6 +202,8 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         "rent_vat_norm": {"use_listing_vat": True, "use_object_rent_vat": True}
     }
 
+    pipeline_cfg = _read_mapping_from_yaml(p, "pipeline") or {}
+
     return {
         "aggregation": {
             "building": {
@@ -220,6 +222,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         },
         "output": {"building_columns": building_columns, "listing_columns": listing_columns},
         "quality": {"outliers": {"rent_rate_year_sqm_base": {"min": 1000, "max": 200000}}},
+        "pipeline": pipeline_cfg,
         "identifier": {
             "listing_id": {
                 "compose_parts": [

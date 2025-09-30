@@ -190,8 +190,11 @@ def parse_ru_textual_date(text: str) -> Optional[date]:
 
 def parse_ru_month_year(text: str) -> Optional[date]:
     """Parse expressions like "февраль 2025" -> first day of month."""
-    t = re.sub(r"\s+", " ", text.strip().lower())
-    m = re.match(r"^(?P<mon>[а-яё]+)\s+(?P<y>\d{4})$", t)
+    cleaned = text.strip().lower()
+    cleaned = re.sub(r"[,.]+", " ", cleaned)
+    cleaned = re.sub(r"[-–—]+", "-", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    m = re.match(r"^(?P<mon>[а-яё]+)[\s/-]+(?P<y>\d{4})$", cleaned)
     if not m:
         return None
     mon = _lookup_ru_month(m.group("mon"))

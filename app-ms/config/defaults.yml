@@ -28,7 +28,7 @@ normalization:
     canon: ["офис", "ритейл", "псн", "склад"]
     synonyms:
       "офис": ["office", "open space", "офис open space", "open-space", "кабинетная", "офисный", "студия", "смешанная"]
-      "ритейл": ["retail", "street-retail", "street retail", "стрит-ритейл", "торговая"]
+      "ритейл": ["retail", "street-retail", "street retail", "стрит-ритейл", "торговая", "торговое"]
       "псн": ["свободного назначения"]
       "склад": ["storage", "warehouse", "складское"]
 
@@ -37,7 +37,7 @@ normalization:
   fitout_condition:
     canon: ["с отделкой", "под отделку"]
     synonyms:
-      "с отделкой": ["готово к въезду", "с мебелью", "есть отделка", "Выполнен ремонт", "Полностью готово к", "гипсовые перегородки"]
+      "с отделкой": ["с готовым ремонтом", "готово к въезду", "с мебелью", "есть отделка", "Выполнен ремонт", "Полностью готово к", "гипсовые перегородки"]
       "под отделку": ["white box", "готово к отделке"]
 
   dates:
@@ -154,3 +154,61 @@ output:
     - source_file|Исходный файл
     - request_id|Идентификатор запроса
     - quality_flags|Флаги качества
+
+pipeline:
+  common:
+    pdf_conversion:
+      enabled: true
+      engine: libreoffice
+    agentql:
+      enabled: true
+      mode: standard
+      timeout_sec: 600
+  doc:
+    pdf_conversion:
+      enabled: true
+    agentql:
+      enabled: true
+  excel:
+    uno_borders:
+      enabled: false
+      width_pt: 1.0
+    pdf_conversion:
+      enabled: true
+    agentql:
+      enabled: true
+  ppt:
+    pdf_conversion:
+      enabled: true
+    agentql:
+      enabled: true
+  pdf:
+    pdf_conversion:
+      enabled: false
+    agentql:
+      enabled: true
+  image:
+    pdf_conversion:
+      enabled: true
+      engine: img2pdf
+    agentql:
+      enabled: true
+  txt:
+    pdf_conversion:
+      enabled: true
+    agentql:
+      enabled: true
+  audio:
+    transcription:
+      enabled: true
+      provider: app-audio
+      timeout_sec: 120
+      language: auto
+      model: whisper-large-v3
+    chatgpt_structured:
+      enabled: true
+      model: gpt-4o-mini
+  postprocess:
+    excel_export:
+      enabled: true
+      format: xlsx

@@ -3,7 +3,7 @@
 Сервис принимает документы, прогоняет их через AgentQL и формирует нормализованный листинг в Excel/JSON. Файл запускается как HTTP API (FastAPI + Uvicorn) и хранит результаты в `data/results`.
 
 ## Возможности
-- авто-конвертация входных документов (PDF/DOCX/PPTX/XLSX/JPG/PNG) в PDF;
+- авто-конвертация входных документов (PDF/DOC/DOCX/PPT/PPTX/XLS/XLSX/TXT/JPG/PNG) в PDF;
 - перед экспортом Excel в PDF таблица автоматически получает границы толщиной 1 pt через UNO-скрипт LibreOffice;
 - обработка аудио через внешний `app-audio` (WAV/MP3/M4A/OGG/AAC);
 - запуск AgentQL-запроса (`app-ms/queries/default_query.txt`) и нормализация данных по правилам `config/defaults.yml`;
@@ -160,6 +160,16 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 ### Идентификаторы (identifier)
 - `listing_id.compose_parts = ["object_id", "building_token_slug", "use_type_norm_slug", "floors_norm_slug", "area_1dp"]`.
 - Добавляется хэш по `source_file_basename` (`hash_part = ["source_file_basename"]`, `hash_len = 8`), элементы соединяются через `__`.
+
+
+
+### Настройки пайплайна (pipeline)
+- Блок `pipeline` в `defaults.yml` делит обработку по типам входа (`doc`, `excel`, `ppt`, `pdf`, `image`, `audio`, `txt`) и позволяет отключать/настраивать этапы без правки кода.
+- `common.pdf_conversion` и `common.agentql` задают значения по умолчанию: движок (`engine: libreoffice`), режим AgentQL (`mode: standard`) и тайм-аут (`timeout_sec`). Значения можно переопределить на уровне конкретного формата.
+- `excel.uno_borders` управляет запуском скрипта `scripts/uno_set_borders.py`; толщина линий берётся из `width_pt` (по умолчанию 1.0 pt).
+- `audio.transcription` и `audio.chatgpt_structured` отвечают за распознавание речи и структурирование расшифровки. Если транскрибация отключена, сервис вернёт 503.
+- Для `doc`/`ppt`/`xls`/`txt` и изображений блок `pdf_conversion` определяет, будет ли выполняться конвертация и каким движком (`img2pdf` для `image`).
+- `postprocess.excel_export.enabled` позволяет отключить генерацию Excel; при запросе `output=excel` при выключенном блоке возвращается ошибка 503.
 
 ## Формирование Excel
 Каждое помещение выгружается отдельной строкой. Порядок и заголовки колонок соответствуют `output.listing_columns`:
