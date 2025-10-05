@@ -118,6 +118,7 @@ RU_MONTHS = {
 }
 
 NOW_TOKENS = {"сейчас", "свободно", "готово к въезду", "сегодня"}
+DEFAULT_YEAR = datetime.now(timezone.utc).year
 
 RU_MONTHS_NOM = {
     "январь": 1,
@@ -148,23 +149,26 @@ def quarter_end(year: int, quarter: int) -> date:
 
 def parse_ddmmyyyy(text: str) -> Optional[date]:
     """
-    Поддерживает DD.MM.YYYY и DD/MM/YYYY.
+    Parse DD.MM.YYYY and DD/MM/YYYY patterns even when embedded in text.
     >>> parse_ddmmyyyy("12.07.2025").isoformat()
     '2025-07-12'
     >>> parse_ddmmyyyy("3/1/2026").isoformat()
     '2026-01-03'
+    >>> parse_ddmmyyyy("с 30.09.2025 г.").isoformat()
+    '2025-09-30'
     """
     t = text.strip().lower()
-    m = re.match(r"^(?P<d>\d{1,2})[./](?P<m>\d{1,2})[./](?P<y>\d{4})$", t)
-    if not m:
+    match = re.search(r"(?P<d>\d{1,2})[./](?P<m>\d{1,2})[./](?P<y>\d{4})", t)
+    if not match:
         return None
-    d = int(m.group("d"))
-    mth = int(m.group("m"))
-    y = int(m.group("y"))
+    d = int(match.group("d"))
+    mth = int(match.group("m"))
+    y = int(match.group("y"))
     try:
         return date(y, mth, d)
     except ValueError:
         return None
+
 
 
 def parse_ru_textual_date(text: str) -> Optional[date]:
@@ -188,20 +192,29 @@ def parse_ru_textual_date(text: str) -> Optional[date]:
     except ValueError:
         return None
 
+
 def parse_ru_month_year(text: str) -> Optional[date]:
     """Parse expressions like "февраль 2025" -> first day of month."""
     cleaned = text.strip().lower()
-    cleaned = re.sub(r"[,.]+", " ", cleaned)
-    cleaned = re.sub(r"[-–—]+", "-", cleaned)
+    cleaned = re.sub(r'[,.]+', ' ', cleaned)
+    cleaned = re.sub(r'[-–—]+', '-', cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
-    m = re.match(r"^(?P<mon>[а-яё]+)[\s/-]+(?P<y>\d{4})$", cleaned)
-    if not m:
-        return None
-    mon = _lookup_ru_month(m.group("mon"))
-    if not mon:
-        return None
-    year = int(m.group("y"))
-    return date(year, mon, 1)
+    for match in re.finditer(r'([а-яё]+)', cleaned):
+        token = match.group(1)
+        mon = _lookup_ru_month(token)
+        if not mon:
+            continue
+        tail = cleaned[match.end():]
+        year_match = re.search(r"\d{4}", tail)
+        if year_match:
+            year = int(year_match.group(0))
+        else:
+            year = DEFAULT_YEAR
+        try:
+            return date(year, mon, 1)
+        except ValueError:
+            continue
+    return None
 
 
 

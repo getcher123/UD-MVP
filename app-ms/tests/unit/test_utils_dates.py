@@ -21,11 +21,19 @@ def test_now_tokens_case_insensitive() -> None:
 def test_parse_ddmmyyyy_variants() -> None:
     assert dt.normalize_delivery_date("12.07.2025") == "2025-07-12"
     assert dt.normalize_delivery_date("3/1/2026") == "2026-01-03"  # dd/mm/yyyy
+    expected_year = dt.DEFAULT_YEAR
+    assert dt.normalize_delivery_date("с 30.09.2025 г.") == f"{expected_year}-09-30"
 
 
 def test_parse_ru_textual_date() -> None:
     assert dt.normalize_delivery_date("  1  марта 2024 ") == "2024-03-01"
     assert dt.normalize_delivery_date("12 июля 2025") == "2025-07-12"
+
+
+def test_parse_ru_month_year_with_noise() -> None:
+    expected_year = dt.DEFAULT_YEAR
+    assert dt.normalize_delivery_date("освобождение/ октябрь " ) == f"{expected_year}-10-01"
+    assert dt.normalize_delivery_date("готово к ноябрь, 2024") == "2024-11-01"
 
 
 def test_parse_quarter_variants() -> None:
