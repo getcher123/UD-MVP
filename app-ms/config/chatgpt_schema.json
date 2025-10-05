@@ -10,7 +10,7 @@
         "properties": {
           "object_rent_vat": {
             "anyOf": [
-              {"type": "string", "enum": ["включен", "не включен", "не применяется"]},
+              {"type": "string"},
               {"type": "null"}
             ]
           },
@@ -43,14 +43,14 @@
                       "market_type": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                       "fitout_condition": {
                         "anyOf": [
-                          {"type": "string", "enum": ["под отделку", "с отделкой"]},
+                          {"type": "string"},
                           {"type": "null"}
                         ]
                       },
                       "delivery_date": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                       "assignment_of_rights": {
                         "anyOf": [
-                          {"type": "string", "enum": ["да", "нет"]},
+                          {"type": "string"},
                           {"type": "null"}
                         ]
                       },
@@ -59,14 +59,14 @@
                       "rent_cost_month_per_room": {"anyOf": [{"type": "number"}, {"type": "null"}]},
                       "rent_vat": {
                         "anyOf": [
-                          {"type": "string", "enum": ["включен", "не включен", "не применяется"]},
+                          {"type": "string"},
                           {"type": "null"}
                         ]
                       },
                       "sale_price_per_sqm": {"anyOf": [{"type": "number"}, {"type": "null"}]},
                       "sale_vat": {
                         "anyOf": [
-                          {"type": "string", "enum": ["включен", "не включен", "не применяется"]},
+                          {"type": "string"},
                           {"type": "null"}
                         ]
                       },

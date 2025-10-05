@@ -11,7 +11,6 @@ from core.config import get_settings
 from core.errors import ErrorCode, ServiceError
 
 
-@lru_cache(maxsize=1)
 def _load_instructions(path: str) -> str:
     try:
         return Path(path).read_text(encoding="utf-8-sig").strip()

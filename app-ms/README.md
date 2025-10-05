@@ -3,7 +3,8 @@
 Сервис принимает документы, прогоняет их через AgentQL и формирует нормализованный листинг в Excel/JSON. Файл запускается как HTTP API (FastAPI + Uvicorn) и хранит результаты в `data/results`.
 
 ## Возможности
-- Документы (PDF/DOC/DOCX/PPT/PPTX/TXT/JPG/PNG) приводятся к PDF и проходят через AgentQL;
+- Документы (PDF/DOC/PPT/PPTX/TXT/JPG/PNG) приводятся к PDF и проходят через AgentQL;
+- DOCX конвертируется в Markdown и разбирается ChatGPT по той же инструкции, что и для аудио;
 - Excel (XLS/XLSX/XLSM) конвертируется в CSV и разбирается ChatGPT по той же инструкции, что и для аудио;
 - Аудио (WAV/MP3/M4A/OGG/AAC) обрабатывается сервисом app-audio (`/v1/transcribe`), затем ChatGPT извлекает структуру из SRT;
 - После извлечения выполняется нормализация, агрегирование и экспорт listings в Excel/JSON внутри `data/results`.
@@ -16,6 +17,11 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload --env-file ./.env
 ```
 > Для аудио требуется развернутый сервис `app-audio` (см. отдельный README).
+
+### Pandoc
+- Для конвертации DOCX→Markdown требуется установленный [Pandoc](https://pandoc.org/installing.html).
+- После установки убедитесь, что команда `pandoc --version` работает в терминале (путь к исполняемому файлу должен быть в переменной `PATH`).
+- Если установили Pandoc впервые, перезапустите терминал перед запуском микросервиса.
 
 Smoke-проверка:
 ```bash
@@ -55,6 +61,7 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | `BASE_URL` | базовый URL для генерации ссылок |
 | `MAX_FILE_MB`, `ALLOW_TYPES` и др. | см. `core/config.py` |
 | Настройки `app-audio` | `APP_AUDIO_URL`, `APP_AUDIO_TIMEOUT`, `APP_AUDIO_LANGUAGE`, `APP_AUDIO_MODEL` |
+| DOCX -> ChatGPT | `DOCX_TYPES` - список расширений DOCX, которые обрабатываются через Markdown + ChatGPT |
 | Excel -> ChatGPT | `EXCEL_TYPES` - список расширений для Excel, которые обрабатываются через CSV + ChatGPT |
 
 ## Нормализация данных

@@ -13,7 +13,7 @@ from services.excel_to_csv import excel_to_csv_text
 
 
 def test_excel_to_csv_text(tmp_path):
-    workbook_path = Path(tmp_path) / "app-ms\tests\unit\15_09_2025_1.xlsx"
+    workbook_path = Path(tmp_path) / "sample.xlsx"
 
     wb = Workbook()
     ws1 = wb.active

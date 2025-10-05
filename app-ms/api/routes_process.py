@@ -17,6 +17,7 @@ from services.audio_client import transcribe_audio
 from services.chatgpt_structured import extract_structured_objects
 from services.excel_export import build_xlsx
 from services.excel_to_csv import excel_to_csv_text
+from services.docx_to_md import docx_to_md_text
 from services.listings import flatten_objects_to_listings
 from services.normalize import normalize_agentql_payload
 from services.pdf_convert import to_pdf
@@ -85,7 +86,9 @@ def _cfg_enabled(cfg: Mapping[str, Any] | None, default: bool = True) -> bool:
 def _detect_format(ext: str, is_audio: bool) -> str:
     if is_audio:
         return "audio"
-    if ext in {"doc", "docx"}:
+    if ext == "docx":
+        return "docx"
+    if ext == "doc":
         return "doc"
     if ext in {"ppt", "pptx"}:
         return "ppt"
@@ -124,6 +127,7 @@ async def process_file(
 
     ext = file_ext(src_path)
     is_audio = ext in settings.AUDIO_TYPES
+    is_docx = ext in settings.DOCX_TYPES
     is_excel = ext in settings.EXCEL_TYPES
 
     rules = get_rules(settings.RULES_PATH)
@@ -190,6 +194,46 @@ async def process_file(
             raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "Excel ChatGPT disabled via configuration")
 
         payload = extract_structured_objects(csv_text)
+        pipeline_steps.append("chatgpt_structured")
+        _persist_json(payload, req_id, "chatgpt_structured.json")
+    elif is_docx:
+        convert_cfg = _get_stage_cfg(pipeline_cfg, "docx", "docx_to_md")
+        if not _cfg_enabled(convert_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "DOCX to Markdown disabled via configuration")
+
+        to_format = "gfm"
+        if isinstance(convert_cfg, dict):
+            format_value = convert_cfg.get("to_format") or convert_cfg.get("to") or convert_cfg.get("format")
+            if isinstance(format_value, str) and format_value.strip():
+                to_format = format_value.strip()
+
+            args_value = convert_cfg.get("args")
+            extra_args = None
+            if isinstance(args_value, (list, tuple)):
+                extra_args = [str(arg) for arg in args_value]
+            elif isinstance(args_value, str) and args_value.strip():
+                extra_args = [arg for arg in args_value.split() if arg]
+        else:
+            extra_args = None
+
+        try:
+            md_text = docx_to_md_text(src_path, to_format=to_format, extra_args=extra_args)
+        except Exception as exc:  # noqa: BLE001
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Failed to convert DOCX to Markdown: {exc}")
+
+        md_name = f"{Path(filename).stem or 'document'}.md"
+        try:
+            write_text(build_result_path(req_id, md_name, base_dir=settings.RESULTS_DIR), md_text)
+        except Exception:  # pragma: no cover - diagnostics helper
+            pass
+
+        pipeline_steps.append("docx_to_md")
+
+        chatgpt_cfg = _get_stage_cfg(pipeline_cfg, "docx", "chatgpt_structured")
+        if not _cfg_enabled(chatgpt_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "DOCX ChatGPT disabled via configuration")
+
+        payload = extract_structured_objects(md_text)
         pipeline_steps.append("chatgpt_structured")
         _persist_json(payload, req_id, "chatgpt_structured.json")
     else:

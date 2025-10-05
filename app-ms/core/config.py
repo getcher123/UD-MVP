@@ -48,6 +48,9 @@ class Settings:
         "xlsx",
         "xlsm",
     ])
+    DOCX_TYPES: List[str] = field(default_factory=lambda: [
+        "docx",
+    ])
     APP_AUDIO_URL: Optional[str] = "http://localhost:8001/v1/transcribe"
     APP_AUDIO_TIMEOUT: float = 120.0
     APP_AUDIO_LANGUAGE: Optional[str] = None
@@ -62,6 +65,7 @@ class Settings:
         object.__setattr__(self, "ALLOW_TYPES", [t.lower() for t in self.ALLOW_TYPES])
         object.__setattr__(self, "AUDIO_TYPES", [t.lower() for t in self.AUDIO_TYPES])
         object.__setattr__(self, "EXCEL_TYPES", [t.lower() for t in self.EXCEL_TYPES])
+        object.__setattr__(self, "DOCX_TYPES", [t.lower() for t in self.DOCX_TYPES])
 
 
 def _get_env_list(name: str, default: List[str]) -> List[str]:
@@ -97,6 +101,7 @@ def get_settings() -> Settings:
     )
     audio_types = _get_env_list("AUDIO_TYPES", ["mp3", "wav", "m4a", "ogg", "aac"])
     excel_types = _get_env_list("EXCEL_TYPES", ["xls", "xlsx", "xlsm"])
+    docx_types = _get_env_list("DOCX_TYPES", ["docx"])
 
     max_file_mb_str = os.getenv("MAX_FILE_MB")
     try:
@@ -128,6 +133,7 @@ def get_settings() -> Settings:
         ALLOW_TYPES=allow_types,
         AUDIO_TYPES=audio_types,
         EXCEL_TYPES=excel_types,
+        DOCX_TYPES=docx_types,
         APP_AUDIO_URL=os.getenv("APP_AUDIO_URL", "http://localhost:8001/v1/transcribe"),
         APP_AUDIO_TIMEOUT=app_audio_timeout,
         APP_AUDIO_LANGUAGE=os.getenv("APP_AUDIO_LANGUAGE"),

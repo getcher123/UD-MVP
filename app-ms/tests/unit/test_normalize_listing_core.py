@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sys
 from pathlib import Path
@@ -25,7 +25,7 @@ def test_normalize_listing_core_basic() -> None:
     assert core["building_token"]
     assert core["use_type_norm"] == "офис"
     assert core["area_sqm"] == 100
-    assert core["floors_norm"] == "1–2"
+    assert core["floors_norm"] == "1-2"
     assert core["fitout_condition_norm"] == "с отделкой"
 
 
@@ -68,3 +68,11 @@ def test_rent_vat_matches_partial_synonym() -> None:
     parent: dict = {}
     result = normalize_listing_core(src, parent, rules)
     assert result["rent_vat_norm"] == "не включен"
+
+
+def test_rent_vat_usn_without_vat_maps_to_not_applied() -> None:
+    rules = _load_rules()
+    src = {"rent_vat": "УСН, без НДС"}
+    parent: dict = {}
+    result = normalize_listing_core(src, parent, rules)
+    assert result["rent_vat_norm"] == "не применяется"
