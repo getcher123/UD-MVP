@@ -14,7 +14,7 @@ from core.errors import ErrorCode, ServiceError
 @lru_cache(maxsize=1)
 def _load_instructions(path: str) -> str:
     try:
-        return Path(path).read_text(encoding="utf-8").strip()
+        return Path(path).read_text(encoding="utf-8-sig").strip()
     except FileNotFoundError as exc:  # pragma: no cover - configuration errors
         raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Instructions file not found: {path}") from exc
     except Exception as exc:  # noqa: BLE001 - propagate as service error
@@ -24,7 +24,7 @@ def _load_instructions(path: str) -> str:
 @lru_cache(maxsize=1)
 def _load_schema(path: str) -> Dict[str, Any]:
     try:
-        raw = Path(path).read_text(encoding="utf-8")
+        raw = Path(path).read_text(encoding="utf-8-sig")
     except FileNotFoundError as exc:  # pragma: no cover - configuration errors
         raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Schema file not found: {path}") from exc
     except Exception as exc:  # noqa: BLE001 - propagate as service error

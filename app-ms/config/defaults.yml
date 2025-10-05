@@ -170,12 +170,9 @@ pipeline:
     agentql:
       enabled: true
   excel:
-    uno_borders:
-      enabled: false
-      width_pt: 1.0
-    pdf_conversion:
+    excel_to_csv:
       enabled: true
-    agentql:
+    chatgpt_structured:
       enabled: true
   ppt:
     pdf_conversion:

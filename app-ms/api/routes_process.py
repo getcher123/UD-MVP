@@ -16,6 +16,7 @@ from services.agentql_client import run_agentql
 from services.audio_client import transcribe_audio
 from services.chatgpt_structured import extract_structured_objects
 from services.excel_export import build_xlsx
+from services.excel_to_csv import excel_to_csv_text
 from services.listings import flatten_objects_to_listings
 from services.normalize import normalize_agentql_payload
 from services.pdf_convert import to_pdf
@@ -88,7 +89,7 @@ def _detect_format(ext: str, is_audio: bool) -> str:
         return "doc"
     if ext in {"ppt", "pptx"}:
         return "ppt"
-    if ext in {"xls", "xlsx"}:
+    if ext in {"xls", "xlsx", "xlsm"}:
         return "excel"
     if ext == "pdf":
         return "pdf"
@@ -123,6 +124,7 @@ async def process_file(
 
     ext = file_ext(src_path)
     is_audio = ext in settings.AUDIO_TYPES
+    is_excel = ext in settings.EXCEL_TYPES
 
     rules = get_rules(settings.RULES_PATH)
     pipeline_cfg = _get_pipeline_cfg(rules)
@@ -165,6 +167,31 @@ async def process_file(
         else:
             payload = {"objects": []}
             pipeline_steps.append("chatgpt_skip")
+    elif is_excel:
+        convert_cfg = _get_stage_cfg(pipeline_cfg, "excel", "excel_to_csv")
+        if not _cfg_enabled(convert_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "Excel to CSV disabled via configuration")
+
+        try:
+            csv_text = excel_to_csv_text(src_path)
+        except Exception as exc:  # noqa: BLE001
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Failed to convert Excel to CSV: {exc}")
+
+        csv_name = f"{Path(filename).stem or 'workbook'}.csv"
+        try:
+            write_text(build_result_path(req_id, csv_name, base_dir=settings.RESULTS_DIR), csv_text)
+        except Exception:  # pragma: no cover - diagnostics helper
+            pass
+
+        pipeline_steps.append("excel_to_csv")
+
+        chatgpt_cfg = _get_stage_cfg(pipeline_cfg, "excel", "chatgpt_structured")
+        if not _cfg_enabled(chatgpt_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "Excel ChatGPT disabled via configuration")
+
+        payload = extract_structured_objects(csv_text)
+        pipeline_steps.append("chatgpt_structured")
+        _persist_json(payload, req_id, "chatgpt_structured.json")
     else:
         pdf_stage_cfg = _get_stage_cfg(pipeline_cfg, fmt_key, "pdf_conversion")
         pdf_enabled_default = fmt_key != "pdf"
