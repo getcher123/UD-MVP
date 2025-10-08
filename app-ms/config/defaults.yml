@@ -186,9 +186,14 @@ pipeline:
     agentql:
       enabled: true
   pdf:
-    pdf_conversion:
-      enabled: false
-    agentql:
+    pdf_to_images:
+      enabled: true
+      dpi: 150
+      format: png
+      poppler_path: "C:\\Program Files\\Poppler\\Library\\bin"
+    vision_per_page:
+      enabled: true
+    chatgpt_structured:
       enabled: true
   image:
     pdf_conversion:
