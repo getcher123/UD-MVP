@@ -4,6 +4,7 @@
 
 ## Возможности
 - Документы (PDF/DOC/PPT/PPTX/TXT/JPG/PNG) приводятся к PDF и проходят через AgentQL;
+- PDF дополнительно обрабатываются через vision-пайплайн: страницы рендерятся в PNG, распознаются GPT-vision с функцией `emit_page`, затем результат нормализуется и агрегируется;
 - DOCX конвертируется в Markdown и разбирается ChatGPT по той же инструкции, что и для аудио;
 - Excel (XLS/XLSX/XLSM) конвертируется в CSV и разбирается ChatGPT по той же инструкции, что и для аудио;
 - Аудио (WAV/MP3/M4A/OGG/AAC) обрабатывается сервисом app-audio (`/v1/transcribe`), затем ChatGPT извлекает структуру из SRT;
@@ -63,6 +64,12 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | Настройки `app-audio` | `APP_AUDIO_URL`, `APP_AUDIO_TIMEOUT`, `APP_AUDIO_LANGUAGE`, `APP_AUDIO_MODEL` |
 | DOCX -> ChatGPT | `DOCX_TYPES` - список расширений DOCX, которые обрабатываются через Markdown + ChatGPT |
 | Excel -> ChatGPT | `EXCEL_TYPES` - список расширений для Excel, которые обрабатываются через CSV + ChatGPT |
+| Vision для PDF | `PDF_VISION_PROMPT_PATH`, `PDF_VISION_SCHEMA_PATH`, `OPENAI_VISION_MODEL` |
+| Поппер | `POPPLER_PATH` — путь к bin-каталогу Poppler для `pdf2image` |
+
+### Дополнительно: Poppler
+- Для rasterизации PDF до PNG используется `pdf2image`, которому нужен установленный [Poppler](https://github.com/oschwartz10612/poppler-windows/releases).
+- На Windows укажите путь к `poppler\Library\bin` в `POPPLER_PATH` (через `.env` или переменные среды) перед запуском сервиса.
 
 ## Нормализация данных
 Правила описаны в `app-ms/config/defaults.yml` (версия 3) и автоматически подхватываются при старте сервиса.
@@ -178,6 +185,7 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 - `audio.transcription` и `audio.chatgpt_structured` отвечают за распознавание речи и структурирование расшифровки. Если транскрибация отключена, сервис вернёт 503.
 - Для `doc`/`ppt`/`xls`/`txt` и изображений блок `pdf_conversion` определяет, будет ли выполняться конвертация и каким движком (`img2pdf` для `image`).
 - `postprocess.excel_export.enabled` позволяет отключить генерацию Excel; при запросе `output=excel` при выключенном блоке возвращается ошибка 503.
+- Для `pdf` доступны новые стадии `pdf_to_images` (рендер страниц в PNG через Poppler) и `vision_per_page` (распознавание GPT-vision по промпту и схеме), после чего результат передаётся в `pdf.chatgpt_structured`.
 
 ## Формирование Excel
 Каждое помещение выгружается отдельной строкой. Порядок и заголовки колонок соответствуют `output.listing_columns`:

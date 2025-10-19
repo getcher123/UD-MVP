@@ -1,1 +1,1 @@
-﻿{"type":"object","additionalProperties":false,"properties":{"schema":{"type":"string"},"blocks":{"type":"array","items":{"type":"object","additionalProperties":false}},"images":{"type":"array","items":{"type":"object","additionalProperties":false}},"notes":{"type":"array","items":{"type":"string"}},"page_index":{"type":["integer","null"]}},"required":["schema","blocks","images","notes","page_index"]}
+﻿{"type":"object","additionalProperties":false,"properties":{"result":{"type":"string"}},"required":["result"]}
