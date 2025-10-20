@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 from pathlib import Path
+import time
 from typing import Any, Dict
 
 from core.config import get_settings
@@ -39,6 +40,9 @@ def analyze_page_image(image_path: str, *, prompt_path: str | None = None, model
     prompt_file = prompt_path or settings.PDF_VISION_PROMPT_PATH
     prompt = _load_instructions(prompt_file)
     schema = _load_schema(settings.PDF_VISION_SCHEMA_PATH)
+
+    start_ts = time.perf_counter()
+    logger.info("vision.start", extra={"image": str(image_file)})
 
     tool_spec = {
         "type": "function",
@@ -86,18 +90,35 @@ def analyze_page_image(image_path: str, *, prompt_path: str | None = None, model
         raise ServiceError(ErrorCode.OPENAI_ERROR, 500, f"Malformed response from OpenAI: {exc}") from exc
 
     try:
-        wrapper = json.loads(arguments)
+        parsed = json.loads(arguments)
     except json.JSONDecodeError as exc:  # noqa: BLE001
         raise ServiceError(ErrorCode.OPENAI_ERROR, 500, f"OpenAI vision produced invalid JSON envelope: {exc}: {arguments[:200]}") from exc
 
-    result_text = wrapper.get("result") if isinstance(wrapper, dict) else None
-    if not isinstance(result_text, str) or not result_text.strip():
-        raise ServiceError(ErrorCode.OPENAI_ERROR, 500, "OpenAI vision payload missing result string")
+    page_payload: dict[str, Any] | None = None
+    if isinstance(parsed, dict):
+        if "result" in parsed and isinstance(parsed["result"], str):
+            result_text = parsed["result"]
+            if not result_text.strip():
+                raise ServiceError(ErrorCode.OPENAI_ERROR, 500, "OpenAI vision payload missing result string")
+            try:
+                page_payload = json.loads(result_text)
+            except json.JSONDecodeError as exc:
+                raise ServiceError(ErrorCode.OPENAI_ERROR, 500, f"OpenAI vision produced invalid JSON: {exc}: {result_text[:200]}") from exc
+        else:
+            page_payload = parsed
+    elif isinstance(parsed, str):
+        try:
+            page_payload = json.loads(parsed)
+        except json.JSONDecodeError as exc:
+            raise ServiceError(ErrorCode.OPENAI_ERROR, 500, f"OpenAI vision produced invalid JSON: {exc}: {parsed[:200]}") from exc
+    else:
+        raise ServiceError(ErrorCode.OPENAI_ERROR, 500, "OpenAI vision returned unsupported payload format")
 
-    try:
-        return json.loads(result_text)
-    except json.JSONDecodeError as exc:
-        raise ServiceError(ErrorCode.OPENAI_ERROR, 500, f"OpenAI vision produced invalid JSON: {exc}: {result_text[:200]}") from exc
+    elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
+    blocks_count = len(page_payload.get("blocks", [])) if isinstance(page_payload, dict) else None
+    logger.info("vision.done", extra={"image": str(image_file), "elapsed_ms": elapsed_ms, "blocks": blocks_count})
+
+    return page_payload
 
 
 __all__ = ["analyze_page_image"]

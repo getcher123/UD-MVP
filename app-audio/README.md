@@ -95,4 +95,22 @@ curl -Method Post http://localhost:8001/v1/transcribe -ContentType "application/
 - Если каталог `app-audio/whisper-diarization` отсутствует, сервис вернёт подсказку.
 - Чтобы поменять модель, передайте нужное значение в `settings.whisper_model` (например, `large-v3`).
 
+## PowerShell-скрипт для локального запуска
+
+В `app-audio/scripts/transcribe-audio.ps1` есть вспомогательный скрипт, который отправляет аудио в сервис и сохраняет результат в ту же папку, что и исходный файл.
+
+```powershell
+# Без диаризации (по умолчанию) → сохранится .txt
+powershell -File app-audio\scripts\transcribe-audio.ps1 -AudioPath "C:\audio\meeting.mp3"
+
+# С диаризацией → сохранится .srt
+powershell -File app-audio\scripts\transcribe-audio.ps1 -AudioPath "C:\audio\meeting.mp3" -Diarize
+```
+
+Параметры:
+- `-AudioPath` — путь к исходному файлу (обязателен).
+- `-Diarize` — опциональный флаг; если указан, сервис вернёт SRT с разбивкой на спикеров.
+
+Результат сохраняется в той же директории, что и исходный файл, с расширением `.txt` или `.srt`. Скрипт использует текущий эндпоинт `http://localhost:8001/v1/transcribe` и параметры `language="ru"` и `whisper_model="medium"`.
+
 

@@ -1,6 +1,24 @@
-﻿Задача. Извлеки все видимые данные только с одной страницы презентации (аренда/продажа коммерческой недвижимости). Верни ровно один JSON по схеме ниже.
-Важно: ничего не нормализуй и не вычисляй. Сохраняй числа, валюты, единицы, даты, формат, регистр и переносы как в источнике. Блоки выводи в порядке чтения: сверху вниз, слева направо. Если чего-то нет — null или пустой массив. Повторы не удаляй.
-
-Типы блоков: text, title, subtitle, table, cards, image, map, floorplan, contact, disclaimer, unknown.
-Если элемент не подходит — используй unknown c полем text.
-Выведи только JSON.
+﻿Верни JSON-объект со структурой:
+{
+  "title": string|null,
+  "subtitle": string|null,
+  "blocks": [
+    {
+      "type": "title"|"subtitle"|"paragraph"|"list",
+      "text": string
+    }
+  ],
+  "points": [string],
+  "contacts": {
+    "address": string|null,
+    "website": string|null,
+    "phone": [string],
+    "messengers": [string]
+  },
+  "amenities": [string],
+  "unknown": [string]
+}
+Требования:
+- Строго валидный JSON.
+- Внутренние кавычки экранируй \\"\\".
+- Пустые списки допускаются.
