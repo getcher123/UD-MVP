@@ -37,7 +37,7 @@ normalization:
   fitout_condition:
     canon: ["с отделкой", "под отделку"]
     synonyms:
-      "с отделкой": ["с готовым ремонтом", "готово к въезду", "с мебелью", "есть отделка", "Выполнен ремонт", "Полностью готово к", "гипсовые перегородки"]
+      "с отделкой": ["с готовым ремонтом", "готово к въезду", "с мебелью", "есть отделка", "Выполнен ремонт", "Полностью готово к", "гипсовые перегородки", "за выездом арендатора"]
       "под отделку": ["white box", "готово к отделке"]
 
   dates:
@@ -165,9 +165,10 @@ pipeline:
       mode: standard
       timeout_sec: 600
   doc:
-    pdf_conversion:
+    doc_to_md:
       enabled: true
-    agentql:
+      to_format: gfm
+    chatgpt_structured:
       enabled: true
   excel:
     excel_to_csv:
@@ -181,14 +182,17 @@ pipeline:
     chatgpt_structured:
       enabled: true
   ppt:
-    pdf_conversion:
+    ppt_to_md:
       enabled: true
-    agentql:
+      heading_prefix: "# "
+      bullet_prefix: "- "
+      include_tables: true
+    chatgpt_structured:
       enabled: true
   pdf:
     pdf_to_images:
       enabled: true
-      dpi: 150
+      dpi: 300
       format: png
       poppler_path: "C:\\Program Files\\Poppler\\Library\\bin"
     vision_per_page:

@@ -113,7 +113,7 @@ async def _process_telegram_file(
 
     try:
         logger.info("[documents] Отправляю файл в МС: path=%s kind=%s", dest, log_kind)
-        xlsx_bytes, out_name = await process_file(dest, str(message.chat.id))
+        xlsx_bytes, out_name, status_messages = await process_file(dest, str(message.chat.id))
         logger.info(
             "[documents] Получена сводная таблица от МС: out_name=%s size=%sB kind=%s",
             out_name,
@@ -122,6 +122,10 @@ async def _process_telegram_file(
         )
         buf = BufferedInputFile(xlsx_bytes, filename=out_name)
         await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
+        for status in status_messages or []:
+            text = status.get("message") if isinstance(status, dict) else None
+            if text:
+                await message.answer(text)
     except httpx.HTTPStatusError as exc:
         logger.exception(
             "[documents] Ошибка от микросервиса %s для %s",

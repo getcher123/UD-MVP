@@ -183,7 +183,9 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 - `common.pdf_conversion` и `common.agentql` задают значения по умолчанию: движок (`engine: libreoffice`), режим AgentQL (`mode: standard`) и тайм-аут (`timeout_sec`). Значения можно переопределить на уровне конкретного формата.
 - `excel.uno_borders` управляет запуском скрипта `scripts/uno_set_borders.py`; толщина линий берётся из `width_pt` (по умолчанию 1.0 pt).
 - `audio.transcription` и `audio.chatgpt_structured` отвечают за распознавание речи и структурирование расшифровки. Если транскрибация отключена, сервис вернёт 503.
-- Для `doc`/`ppt`/`xls`/`txt` и изображений блок `pdf_conversion` определяет, будет ли выполняться конвертация и каким движком (`img2pdf` для `image`).
+- Для `xls`/`txt` и изображений блок `pdf_conversion` решает, выполнять ли конвертацию и каким движком (`img2pdf` для ветки `image`).
+- Для `doc`/`docx` документ преобразуется в Markdown (`doc_to_md`/`docx_to_md`), после чего запускается `chatgpt_structured`.
+- Для `ppt`/`pptx` используется этап `ppt_to_md`, который вытягивает текст (включая простые таблицы) в Markdown перед вызовом `chatgpt_structured`.
 - `postprocess.excel_export.enabled` позволяет отключить генерацию Excel; при запросе `output=excel` при выключенном блоке возвращается ошибка 503.
 - Для `pdf` доступны новые стадии `pdf_to_images` (рендер страниц в PNG через Poppler) и `vision_per_page` (распознавание GPT-vision по промпту и схеме), после чего результат передаётся в `pdf.chatgpt_structured`.
 

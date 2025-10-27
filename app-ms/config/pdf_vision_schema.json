@@ -67,6 +67,12 @@
 	  "items": {
 		"type": "string"
 	  }
+	},
+	"raw_lines": {
+	  "type": "array",
+	  "items": {
+		"type": "string"
+	  }
 	}
   },
   "required": [
@@ -76,6 +82,7 @@
 	"points",
 	"contacts",
 	"amenities",
-	"unknown"
+	"unknown",
+	"raw_lines"
   ]
 }
