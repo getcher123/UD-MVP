@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List
@@ -112,7 +112,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         "sale_vat_norm_mode",
         "source_files",
         "request_id",
-        "quality_flags",
+        "uncertain_parameters",
     ]
 
     listing_columns = _read_sequence_from_yaml(p, "listing_columns") or [
@@ -137,7 +137,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         "sale_vat_norm",
         "source_file",
         "request_id",
-        "quality_flags",
+        "uncertain_parameters",
     ]
 
     now_tokens = _read_sequence_from_yaml(p, "now_tokens") or []
@@ -187,7 +187,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
                 "range_separators": ["-", "–"],
                 "render": {
                     "join_token": "; ",
-                    "range_dash": "–",
+                    "range_dash": "-",
                     "sort_numeric_first": True,
                     "uniq": True,
                 },

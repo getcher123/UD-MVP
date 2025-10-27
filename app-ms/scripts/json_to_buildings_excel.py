@@ -41,7 +41,7 @@ def _read_building_columns_from_yaml(path: Path) -> List[str] | None:
 def _rules(defaults_yaml: Path) -> Dict[str, Any]:
     # minimal rules sufficient for aggregation; attempt to extract columns from YAML
     columns = _read_building_columns_from_yaml(defaults_yaml) or [
-        "building_id","building_name","object_id","object_name","use_type_set_norm","fitout_condition_mode","delivery_date_earliest","floors_covered_norm","area_sqm_total","listing_count","rent_rate_year_sqm_base_min","rent_rate_year_sqm_base_avg","rent_rate_year_sqm_base_max","rent_vat_norm_mode","opex_year_per_sqm_avg","rent_month_total_gross_avg","sale_price_per_sqm_min","sale_price_per_sqm_avg","sale_price_per_sqm_max","sale_vat_norm_mode","source_files","request_id","quality_flags"
+        "building_id","building_name","object_id","object_name","use_type_set_norm","fitout_condition_mode","delivery_date_earliest","floors_covered_norm","area_sqm_total","listing_count","rent_rate_year_sqm_base_min","rent_rate_year_sqm_base_avg","rent_rate_year_sqm_base_max","rent_vat_norm_mode","opex_year_per_sqm_avg","rent_month_total_gross_avg","sale_price_per_sqm_min","sale_price_per_sqm_avg","sale_price_per_sqm_max","sale_vat_norm_mode","source_files","request_id","uncertain_parameters"
     ]
 
     return {

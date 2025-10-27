@@ -45,6 +45,17 @@ def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, 
                 bid = make_building_id(core.get("object_name") or "", core.get("building_raw"))
                 lid = make_listing_id(core, rules, source_file)
 
+                uncertain_set: set[str] = set()
+                for value in lst.get("uncertain_parameters") or []:
+                    value_str = str(value).strip()
+                    if value_str:
+                        uncertain_set.add(value_str)
+                for value in deriv.get("uncertain_parameters") or []:
+                    value_str = str(value).strip()
+                    if value_str:
+                        uncertain_set.add(value_str)
+                uncertain_text = "; ".join(sorted(uncertain_set)) if uncertain_set else None
+
                 row: Dict[str, Any] = {
                     "listing_id": lid,
                     "object_id": make_object_id(core.get("object_name") or ""),
@@ -67,7 +78,8 @@ def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, 
                     "sale_vat_norm": core.get("sale_vat_norm"),
                     "source_file": source_file.split("/")[-1].split("\\")[-1],
                     "request_id": request_id,
-                    "quality_flags": deriv.get("quality_flags"),
+                    "uncertain_parameters": uncertain_text,
+                    "recognition_summary": lst.get("recognition_summary"),
                 }
 
                 rows.append(row)

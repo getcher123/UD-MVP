@@ -212,7 +212,7 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | `sale_vat_norm` | `НДС (цена продажи)` |
 | `source_file` | `Исходный файл` |
 | `request_id` | `Идентификатор запроса` |
-| `quality_flags` | `Флаги качества` |
+| `uncertain_parameters` | `Сомнительные параметры` |
 
 Идентификаторы (`listing_id`, `building_id`) формируются по правилам `identifier` из `defaults.yml`.
 
