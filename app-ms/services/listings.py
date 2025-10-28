@@ -82,6 +82,14 @@ def flatten_objects_to_listings(objects: List[Dict[str, Any]], rules: Dict[str, 
                     "recognition_summary": lst.get("recognition_summary"),
                 }
 
+                source_lower = row["source_file"].lower() if row.get("source_file") else ""
+                if (
+                    "enka" in source_lower
+                    and lst.get("rent_rate") not in (None, "")
+                    and not row.get("opex_year_per_sqm")
+                ):
+                    row["opex_included"] = "включен"
+
                 rows.append(row)
     return rows
 

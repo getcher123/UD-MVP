@@ -188,6 +188,8 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 - Для `ppt`/`pptx` используется этап `ppt_to_md`, который вытягивает текст (включая простые таблицы) в Markdown перед вызовом `chatgpt_structured`.
 - `postprocess.excel_export.enabled` позволяет отключить генерацию Excel; при запросе `output=excel` при выключенном блоке возвращается ошибка 503.
 - Для `pdf` доступны новые стадии `pdf_to_images` (рендер страниц в PNG через Poppler) и `vision_per_page` (распознавание GPT-vision по промпту и схеме), после чего результат передаётся в `pdf.chatgpt_structured`.
+- Vision-�������� ������ `raw_lines` � ପ������ `blocks` �������� `status` � ��������� ��������� ������� (������: «��������� ����������», «�������� �������», «��������� ???»).
+- ���� ᮧ���� 䠩� ��������� ����� `enka`, � входных ���� ��� `rent_rate`, � `opex_year_per_sqm` ������� ���, ��� `opex_included` ���������� �� «��������».
 
 ## Формирование Excel
 Каждое помещение выгружается отдельной строкой. Порядок и заголовки колонок соответствуют `output.listing_columns`:
@@ -212,6 +214,7 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | `sale_vat_norm` | `НДС (цена продажи)` |
 | `source_file` | `Исходный файл` |
 | `request_id` | `Идентификатор запроса` |
+| `recognition_summary` | `Сводка распознавания` |
 | `uncertain_parameters` | `Сомнительные параметры` |
 
 Идентификаторы (`listing_id`, `building_id`) формируются по правилам `identifier` из `defaults.yml`.

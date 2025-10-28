@@ -135,7 +135,6 @@ identifier:
 output:
   # КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (КАЖДОЕ ПОМЕЩЕНИЕ = 1 СТРОКА)
   listing_columns:
-    - object_name|Объект
     - building_name|Здание
     - use_type_norm|Тип использования
     - area_sqm|Площадь, кв.м.
@@ -145,12 +144,13 @@ output:
     - fitout_condition_norm|Состояние помещения
     - delivery_date_norm|Дата передачи
     - rent_rate_year_sqm_base|Ставка аренды в год за кв.м., руб.
+    - rent_vat_norm|НДС (ставка аренды)
     - opex_year_per_sqm|OPEX в год за кв.м., руб.
     - opex_included|OPEX включен
     - rent_month_total_gross|Ставка аренды в месяц, руб.
     - sale_price_per_sqm|Цена продажи за кв.м., руб.
+    - sale_vat_norm|НДС (цена продажи)
     - source_file|Исходный файл
-    - request_id|Идентификатор запроса
     - recognition_summary|Сводка распознавания
     - uncertain_parameters|Сомнительные параметры
 
@@ -191,7 +191,7 @@ pipeline:
   pdf:
     pdf_to_images:
       enabled: true
-      dpi: 300
+      dpi: 250
       format: png
       poppler_path: "C:\\Program Files\\Poppler\\Library\\bin"
     vision_per_page:
@@ -213,12 +213,12 @@ pipeline:
     transcription:
       enabled: true
       provider: app-audio
-      timeout_sec: 120
+      timeout_sec: 300
       language: auto
       model: whisper-large-v3
     chatgpt_structured:
       enabled: true
-      model: gpt-4o-mini
+      model: gpt-5
   postprocess:
     excel_export:
       enabled: true

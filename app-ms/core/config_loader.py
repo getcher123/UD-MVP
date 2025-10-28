@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -50,9 +51,15 @@ def _read_mapping_from_yaml(path: Path, key: str) -> Dict[str, Any] | None:
             if val_lower in {"true", "false"}:
                 value = val_lower == "true"
             else:
-                if len(value_part) >= 2 and value_part[0] == value_part[-1] and value_part[0] in ('"', '\''):
-                    value_part = value_part[1:-1]
-                value = value_part
+                if value_part.startswith("[") and value_part.endswith("]"):
+                    try:
+                        value = json.loads(value_part)
+                    except json.JSONDecodeError:
+                        value = value_part
+                else:
+                    if len(value_part) >= 2 and value_part[0] == value_part[-1] and value_part[0] in ('"', '\''):
+                        value_part = value_part[1:-1]
+                    value = value_part
             parent[key_part] = value
 
     return mapping or None
@@ -137,6 +144,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         "sale_vat_norm",
         "source_file",
         "request_id",
+        "recognition_summary",
         "uncertain_parameters",
     ]
 
@@ -155,7 +163,16 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
         "fitout_condition": {
             "canon": ["с отделкой", "под отделку"],
             "synonyms": {
-                "с отделкой": ["готово к въезду", "с мебелью", "есть отделка", "гипсовые перегородки"],
+                "с отделкой": [
+                    "с готовым ремонтом",
+                    "готово к въезду",
+                    "с мебелью",
+                    "есть отделка",
+                    "выполнен ремонт",
+                    "полностью готово к",
+                    "гипсовые перегородки",
+                    "за выездом арендатора",
+                ],
                 "под отделку": ["white box", "готово к отделке"],
             },
         },
