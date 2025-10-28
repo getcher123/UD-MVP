@@ -1,0 +1,33 @@
+{
+  "request_id": "aaaaeq-single-2025-10-28-01",
+  "source_file": "smoke_manual.xlsx",
+  "received_at": "2025-10-28T13:27:00Z",
+  "listings": [
+    {
+      "object_name": "Смок-тест, помещение 4",
+      "building_name": " CRM Core XP Tower 4 ",
+      "use_type_norm": "Офис",
+      "area_sqm": 302,
+      "divisible_from_sqm": 220,
+      "floors_norm": "4 этаж",
+      "market_type": "Аренда",
+      "fitout_condition_norm": "Без отделки",
+      "delivery_date_norm": "Готово",
+      "rent_rate_year_sqm_base": 26000,
+      "rent_vat_norm": "С НДС",
+      "opex_year_per_sqm": 1111,
+      "opex_included": "Да",
+      "rent_month_total_gross": 111111,
+      "sale_price_per_sqm": 200000,
+      "sale_vat_norm": "Без НДС",
+      "source_file": "smoke_test_04.pdf",
+      "request_id": "ааааа85-6cfd-489f-babc-2a425ac958d7",
+      "recognition_summary": "Smoke test row #4",
+      "uncertain_parameters": [],
+      "updated_at": "2025-10-28T13:26:57Z"
+    }
+  ],
+  "meta": {
+    "listings_total": 1
+  }
+}
