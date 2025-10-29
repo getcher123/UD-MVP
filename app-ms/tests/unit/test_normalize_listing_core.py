@@ -25,7 +25,7 @@ def test_normalize_listing_core_basic() -> None:
     assert core["building_token"]
     assert core["use_type_norm"] == "офис"
     assert core["area_sqm"] == 100
-    assert core["floors_norm"] == "1-2"
+    assert core["floors_norm"] == "1–2"
     assert core["fitout_condition_norm"] == "с отделкой"
 
 

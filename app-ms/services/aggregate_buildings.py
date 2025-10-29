@@ -31,7 +31,7 @@ Doctest (minimal happy path):
 ...       "rent_rate_year_sqm_base_min","rent_rate_year_sqm_base_avg","rent_rate_year_sqm_base_max",
 ...       "rent_vat_norm_mode","opex_year_per_sqm_avg","rent_month_total_gross_avg",
 ...       "sale_price_per_sqm_min","sale_price_per_sqm_avg","sale_price_per_sqm_max",
-...       "sale_vat_norm_mode","source_files","request_id","quality_flags"
+...       "sale_vat_norm_mode","source_files","request_id","uncertain_parameters"
 ...   ]},
 ...   "normalization": {
 ...       "use_type": {"canon": ["офис"], "synonyms": {"офис": ["office"]}},
@@ -205,7 +205,7 @@ def group_to_buildings(objects: List[Dict[str, Any]], rules: Dict[str, Any], req
                     "has_now": False,
                     "source_files_set": set([src_basename]) if src_basename else set(),
                     "listing_count": 0,
-                    "quality_flags_set": set(),
+                    "uncertain_parameters_set": set(),
                 }
             agg = by_key[bid]
 
@@ -269,10 +269,18 @@ def group_to_buildings(objects: List[Dict[str, Any]], rules: Dict[str, Any], req
                 if sp is not None:
                     agg["sale_price_values"].append(sp)
 
-                # Quality flags
-                for q in (lst.get("quality_flags") or []):
-                    if q:
-                        agg["quality_flags_set"].add(str(q))
+                # Uncertainty markers
+                raw_uncertain = lst.get("uncertain_parameters")
+                if raw_uncertain:
+                    if isinstance(raw_uncertain, str):
+                        items = [part.strip() for part in raw_uncertain.split(";") if part.strip()]
+                    elif isinstance(raw_uncertain, (list, tuple, set)):
+                        items = [str(part).strip() for part in raw_uncertain if str(part).strip()]
+                    else:
+                        value = str(raw_uncertain).strip()
+                        items = [value] if value else []
+                    for q in items:
+                        agg["uncertain_parameters_set"].add(q)
 
                 agg["listing_count"] += 1
 
@@ -333,7 +341,7 @@ def group_to_buildings(objects: List[Dict[str, Any]], rules: Dict[str, Any], req
             "sale_vat_norm_mode": sale_vat_mode,
             "source_files": join_src.join(sorted(agg.get("source_files_set") or [])),
             "request_id": request_id,
-            "quality_flags": ";".join(sorted(agg.get("quality_flags_set") or [])),
+            "uncertain_parameters": "; ".join(sorted(agg.get("uncertain_parameters_set") or [])) or None,
         }
 
         # Emit with exact columns only

@@ -88,3 +88,26 @@ def test_extract_structured_objects_parses_openai_response(monkeypatch, tmp_path
 def test_extract_structured_objects_requires_text():
     with pytest.raises(ServiceError):
         mod.extract_structured_objects("")
+
+def test_extract_structured_objects_accepts_sequence(monkeypatch, tmp_path):
+    instructions_path, schema_path = _write_config_files(tmp_path)
+    payload = {"objects": []}
+    captured_messages = {}
+
+    def fake_create(model, messages, tools, tool_choice):  # noqa: ANN001
+        captured_messages["messages"] = messages
+        tool_call = SimpleNamespace(function=SimpleNamespace(arguments=json.dumps(payload)))
+        message = SimpleNamespace(tool_calls=[tool_call])
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    dummy_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
+    )
+
+    monkeypatch.setattr(mod, "_get_openai_client", lambda: dummy_client)
+    monkeypatch.setattr(mod, "get_settings", lambda: DummySettings(instructions_path, schema_path))
+
+    result = mod.extract_structured_objects([{"page": 1, "text": "foo"}])
+    assert result == payload
+    sent = captured_messages["messages"]
+    assert any("[" in msg.get("content", "") for msg in sent if isinstance(msg, dict))

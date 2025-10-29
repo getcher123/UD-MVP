@@ -37,7 +37,7 @@ normalization:
   fitout_condition:
     canon: ["с отделкой", "под отделку"]
     synonyms:
-      "с отделкой": ["с готовым ремонтом", "готово к въезду", "с мебелью", "есть отделка", "Выполнен ремонт", "Полностью готово к", "гипсовые перегородки"]
+      "с отделкой": ["с готовым ремонтом", "готово к въезду", "с мебелью", "есть отделка", "Выполнен ремонт", "Полностью готово к", "гипсовые перегородки", "за выездом арендатора"]
       "под отделку": ["white box", "готово к отделке"]
 
   dates:
@@ -55,8 +55,8 @@ normalization:
     canon: ["включен", "не включен", "не применяется"]
     synonyms:
       "не применяется": ["УСН", "УСН, без НДС", "освобождено", "не облагается НДС", "НДС 5%", "без НДС (УСН)", "УСН без НДС"]
-      "включен": ["включая НДС", "с НДС", "НДС включен", "ставка с НДС", "вкл. НДС","с учетом НДС", "НДС по действующей ставке"]
-      "не включен": ["без НДС", "без НДС.", "без учета НДС", "НДС не включен", "не включая НДС", "начисляется НДС"]  
+      "включен": ["включая НДС", "с НДС", "НДС включен", "ставка с НДС", "вкл. НДС", "с учетом НДС", "НДС по действующей ставке"]
+      "не включен": ["без НДС", "без НДС.", "без учета НДС", "НДС не включен", "не включая НДС", "начисляется НДС"]
     default_rate: 0.20
 
   opex_included:
@@ -109,13 +109,13 @@ fallbacks:
   opex_included:
     set_when_year_per_sqm_present: "не включен"
   vat_partial_synonyms:
+    "включен": ["НДС по действующей ставке"]
     не включен: начисляется НДС
 
 
 questions:
   fitout_condition: "Уточните отделку: «с отделкой» или «под отделку»?"
   delivery_date: "Уточните дату передачи (ISO YYYY-MM-DD) или «сейчас»."
-  rent_rate: "Подтвердите НДС (включен/не применяется) и OPEX (включён/отдельно, руб/м²/год)."
   use_type: "Уточните тип использования: офис, торговое, псн или склад."
 
 # Имя здания и ID строятся на уровне листинга (без агрегаций)
@@ -135,7 +135,6 @@ identifier:
 output:
   # КОЛОНКИ ВЫХОДНОЙ EXCEL-ТАБЛИЦЫ (КАЖДОЕ ПОМЕЩЕНИЕ = 1 СТРОКА)
   listing_columns:
-    - object_name|Объект
     - building_name|Здание
     - use_type_norm|Тип использования
     - area_sqm|Площадь, кв.м.
@@ -152,8 +151,8 @@ output:
     - sale_price_per_sqm|Цена продажи за кв.м., руб.
     - sale_vat_norm|НДС (цена продажи)
     - source_file|Исходный файл
-    - request_id|Идентификатор запроса
-    - quality_flags|Флаги качества
+    - recognition_summary|Сводка распознавания
+    - uncertain_parameters|Сомнительные параметры
 
 pipeline:
   common:
@@ -165,9 +164,10 @@ pipeline:
       mode: standard
       timeout_sec: 600
   doc:
-    pdf_conversion:
+    doc_to_md:
       enabled: true
-    agentql:
+      to_format: gfm
+    chatgpt_structured:
       enabled: true
   excel:
     excel_to_csv:
@@ -181,14 +181,22 @@ pipeline:
     chatgpt_structured:
       enabled: true
   ppt:
-    pdf_conversion:
+    ppt_to_md:
       enabled: true
-    agentql:
+      heading_prefix: "# "
+      bullet_prefix: "- "
+      include_tables: true
+    chatgpt_structured:
       enabled: true
   pdf:
-    pdf_conversion:
-      enabled: false
-    agentql:
+    pdf_to_images:
+      enabled: true
+      dpi: 250
+      format: png
+      poppler_path: "C:\\Program Files\\Poppler\\Library\\bin"
+    vision_per_page:
+      enabled: true
+    chatgpt_structured:
       enabled: true
   image:
     pdf_conversion:
@@ -205,12 +213,12 @@ pipeline:
     transcription:
       enabled: true
       provider: app-audio
-      timeout_sec: 120
+      timeout_sec: 300
       language: auto
       model: whisper-large-v3
     chatgpt_structured:
       enabled: true
-      model: gpt-4o-mini
+      model: gpt-5
   postprocess:
     excel_export:
       enabled: true

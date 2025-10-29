@@ -3,7 +3,7 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Mapping, Sequence
 
 from openai import OpenAI
 
@@ -43,8 +43,13 @@ def _get_openai_client() -> OpenAI:
     return OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
-def extract_structured_objects(raw_text: str) -> Dict[str, Any]:
-    if not raw_text or not raw_text.strip():
+def extract_structured_objects(raw_payload: Any) -> Dict[str, Any]:
+    if isinstance(raw_payload, (Mapping, Sequence)) and not isinstance(raw_payload, (str, bytes, bytearray)):
+        raw_text = json.dumps(raw_payload, ensure_ascii=False, indent=2)
+    else:
+        raw_text = str(raw_payload or "")
+
+    if not raw_text.strip():
         raise ServiceError(ErrorCode.VALIDATION_ERROR, 422, "raw_text must be provided")
 
     settings = get_settings()

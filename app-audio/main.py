@@ -105,7 +105,7 @@ def _decode_audio(audio_b64: str, filename: Optional[str]) -> Path:
 
     suffix = ""
     if filename:
-        suffix = "".join(Path(filename).suffixes)
+        suffix = Path(filename).suffix
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
             handle.write(payload)
@@ -245,3 +245,4 @@ async def health() -> dict[str, str]:
     """Simple readiness endpoint."""
 
     return {"status": "ok"}
+

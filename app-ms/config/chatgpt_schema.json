@@ -10,68 +10,245 @@
         "properties": {
           "object_rent_vat": {
             "anyOf": [
-              {"type": "string"},
-              {"type": "null"}
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
-          "object_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-          "sale_price_per_building": {"anyOf": [{"type": "number"}, {"type": "null"}]},
-          "object_use_type": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+          "object_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sale_price_per_building": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "object_use_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "buildings": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "building_name": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "building_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "listings": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                      "use_type": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                      "area_sqm": {"anyOf": [{"type": "number"}, {"type": "null"}]},
-                      "divisible_from_sqm": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+                      "use_type": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "area_sqm": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "divisible_from_sqm": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "floor": {
                         "anyOf": [
-                          {"type": "number"},
-                          {"type": "string"},
-                          {"type": "null"}
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
-                      "market_type": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                      "market_type": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "fitout_condition": {
                         "anyOf": [
-                          {"type": "string"},
-                          {"type": "null"}
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
-                      "delivery_date": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                      "delivery_date": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "assignment_of_rights": {
                         "anyOf": [
-                          {"type": "string"},
-                          {"type": "null"}
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
-                      "assignment_details": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-                      "rent_rate": {"anyOf": [{"type": "number"}, {"type": "null"}]},
-                      "rent_cost_month_per_room": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+                      "assignment_details": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "rent_rate": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "rent_cost_month_per_room": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "rent_vat": {
                         "anyOf": [
-                          {"type": "string"},
-                          {"type": "null"}
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
-                      "sale_price_per_sqm": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+                      "sale_price_per_sqm": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "sale_vat": {
                         "anyOf": [
-                          {"type": "string"},
-                          {"type": "null"}
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
-                      "opex_included": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
-                      "opex_year_per_sqm": {"anyOf": [{"type": "number"}, {"type": "null"}]}
+                      "opex_included": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "opex_year_per_sqm": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "recognition_summary": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "uncertain_parameters": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
                     },
                     "required": [
                       "use_type",
@@ -89,12 +266,17 @@
                       "sale_price_per_sqm",
                       "sale_vat",
                       "opex_included",
-                      "opex_year_per_sqm"
+                      "opex_year_per_sqm",
+                      "recognition_summary",
+                      "uncertain_parameters"
                     ]
                   }
                 }
               },
-              "required": ["building_name", "listings"]
+              "required": [
+                "building_name",
+                "listings"
+              ]
             }
           }
         },
@@ -108,5 +290,7 @@
       }
     }
   },
-  "required": ["objects"]
+  "required": [
+    "objects"
+  ]
 }

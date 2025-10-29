@@ -1,0 +1,20 @@
+version: 1
+
+# Copy this file to `sheets.local.yml` and fill in the real values.
+# `sheets.local.yml` is gitignored so your IDs stay local.
+sheets:
+  listings:
+    spreadsheet_id: "1_YdhkV6P4m_jv4Fz9rarxxwBFQXJPRxnGf1A6jAx3YE"
+    worksheet: "V1"
+    header_row: 1
+    data_range: "V1!A:Z"
+    match:
+      building_name_column: "building_name"
+      area_sqm_column: "area_sqm"
+      tolerance_sqm: 2.0
+    system_columns:
+      updated_at: "updated_at"
+      source_file: "source_file"
+  request_log:
+    worksheet: "request_log"
+    header_row: 1
