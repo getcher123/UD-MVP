@@ -81,5 +81,6 @@ class DuplicateEntry(BaseModel):
 class ImportListingsResponse(BaseModel):
     request_id: str
     processed_at: str
+    sheet_url: str
     summary: SummaryPayload
     duplicates: List[DuplicateEntry] = Field(default_factory=list)

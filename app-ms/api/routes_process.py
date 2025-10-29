@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, Response
+from fastapi.responses import JSONResponse
 
 from core.config import get_settings
 from core.config_loader import get_rules
@@ -169,7 +171,9 @@ async def process_file(
         crm_response = send_listings_to_crm(crm_payload, settings)
         _persist_json(crm_response, req_id, "crm_response.json")
         elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
-        return {
+
+        sheet_url = crm_response.get("sheet_url")
+        body = {
             "request_id": req_id,
             "crm_response": crm_response,
             "meta": {
@@ -179,6 +183,9 @@ async def process_file(
                 "pipeline": "crm_forward",
             },
         }
+        if isinstance(sheet_url, str) and sheet_url.strip():
+            body["crm_response"]["sheet_url"] = sheet_url.strip()
+        return JSONResponse(content=body)
 
     pipeline_steps: list[str] = []
     if fmt_key:
@@ -579,7 +586,16 @@ async def process_file(
     if out_mode == "excel":
         if not excel_enabled or xlsx_bytes is None:
             raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "Excel export disabled via configuration")
-        headers = {"Content-Disposition": 'attachment; filename="listings.xlsx"'}
+        status_payload = [
+            {
+                "message": "✅ Готово: сводная таблица. Пожалуйста проверьте корректность распознавания и отправьте обратно в бота, чтобы опубликовать в CRM"
+            }
+        ]
+        status_header = base64.b64encode(json.dumps(status_payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        headers = {
+            "Content-Disposition": 'attachment; filename="listings.xlsx"',
+            "X-UD-Status": status_header,
+        }
         return Response(
             content=xlsx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

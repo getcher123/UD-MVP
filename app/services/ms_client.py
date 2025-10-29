@@ -148,47 +148,50 @@ def _format_json_response(resp: httpx.Response) -> str:
     except ValueError:
         return resp.text
 
-    def _val(obj: Any, default: str = "нет данных") -> str:
+    def _val(obj: Any, default: str = 'нет данных') -> str:
         return str(obj) if obj is not None else default
 
-    crm = data.get("crm_response") if isinstance(data, dict) else None
+    crm = data.get('crm_response') if isinstance(data, dict) else None
     if isinstance(crm, dict):
-        rid = crm.get("request_id") or data.get("request_id")
-        summary = crm.get("summary") if isinstance(crm.get("summary"), dict) else {}
+        rid = crm.get('request_id') or data.get('request_id')
+        summary = crm.get('summary') if isinstance(crm.get('summary'), dict) else {}
         lines: list[str] = []
         if rid:
             lines.append(f"CRM запрос: {rid}")
         lines.append(
-            "Обновлено: {updated}; добавлено: {inserted}; пропущено: {skipped}".format(
-                updated=_val(summary.get("updated"), "0"),
-                inserted=_val(summary.get("inserted"), "0"),
-                skipped=_val(summary.get("skipped"), "0"),
+            'Обновлено: {updated}; добавлено: {inserted}; пропущено: {skipped}'.format(
+                updated=_val(summary.get('updated'), '0'),
+                inserted=_val(summary.get('inserted'), '0'),
+                skipped=_val(summary.get('skipped'), '0'),
             )
         )
-        duplicates = crm.get("duplicates") if isinstance(crm.get("duplicates"), list) else []
+        duplicates = crm.get('duplicates') if isinstance(crm.get('duplicates'), list) else []
         if duplicates:
-            lines.append("Дубликаты:")
+            lines.append('Дубликаты:')
             for dup in duplicates[:10]:
                 if not isinstance(dup, dict):
                     continue
-                idx = dup.get("listing_index")
-                reason = dup.get("reason")
+                idx = dup.get('listing_index')
+                reason = dup.get('reason')
                 if idx is None and not reason:
                     continue
                 if idx is None:
-                    lines.append(f"• {reason}")
+                    lines.append(f"- {reason}")
                 elif reason:
-                    lines.append(f"• #{idx}: {reason}")
+                    lines.append(f"- #{idx}: {reason}")
                 else:
-                    lines.append(f"• #{idx}")
+                    lines.append(f"- #{idx}")
             if len(duplicates) > 10:
-                lines.append(f"... ещё {len(duplicates) - 10}")
-        meta = data.get("meta")
+                lines.append(f"- ... ещё {len(duplicates) - 10}")
+        meta = data.get('meta')
         if isinstance(meta, dict):
-            listings_total = meta.get("listings_total")
+            listings_total = meta.get('listings_total')
             if listings_total is not None:
                 lines.append(f"Всего строк в запросе: {listings_total}")
-        return "\n".join(lines)
+        sheet_url = crm.get('sheet_url') or data.get('sheet_url')
+        if isinstance(sheet_url, str) and sheet_url.strip():
+            lines.append(f"Google Sheet: {sheet_url.strip()}")
+        return '\n'.join(lines)
 
     if isinstance(data, dict):
         return json.dumps(data, ensure_ascii=False, indent=2)

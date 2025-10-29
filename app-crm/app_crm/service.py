@@ -26,6 +26,7 @@ class CRMProcessor:
         self.settings = sheet_settings
         self.gateway = sheet_gateway
         self.columns = list(columns)
+        self.sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_settings.spreadsheet_id}"
 
     def process(self, payload: ImportListingsRequest) -> ImportListingsResponse:
         cached = self.gateway.find_request_log(payload.request_id)
@@ -33,6 +34,7 @@ class CRMProcessor:
             return ImportListingsResponse(
                 request_id=payload.request_id,
                 processed_at=cached.get("processed_at"),
+                sheet_url=self.sheet_url,
                 summary=SummaryPayload(**cached.get("summary", {})),
                 duplicates=[DuplicateEntry(**item) for item in cached.get("duplicates", [])],
             )
@@ -71,6 +73,7 @@ class CRMProcessor:
         return ImportListingsResponse(
             request_id=payload.request_id,
             processed_at=processed_at,
+            sheet_url=self.sheet_url,
             summary=summary,
             duplicates=duplicates,
         )

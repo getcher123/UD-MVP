@@ -46,6 +46,7 @@ def test_insert_new_listing():
     response = processor.process(request)
 
     assert response.summary.inserted == 1
+    assert response.sheet_url.endswith(DEFAULT_SETTINGS.spreadsheet_id)
     assert response.summary.updated == 0
     assert len(gateway.rows) == 1
     stored = gateway.rows[0].data
@@ -71,6 +72,7 @@ def test_insert_with_minimal_columns():
     response = processor.process(request)
 
     assert response.summary.inserted == 1
+    assert response.sheet_url.endswith(DEFAULT_SETTINGS.spreadsheet_id)
     stored = gateway.rows[0].data
     assert stored["building_name"] == "CRM Core XP Tower minimal"
     assert stored["area_sqm"] == 180
@@ -118,6 +120,7 @@ def test_update_existing_listing_matches_by_area():
     response = processor.process(request)
 
     assert response.summary.updated == 1
+    assert response.sheet_url.endswith(DEFAULT_SETTINGS.spreadsheet_id)
     assert response.summary.inserted == 0
     stored = gateway.rows[0].data
     assert stored["rent_rate_year_sqm_base"] == 23000
@@ -184,5 +187,6 @@ def test_idempotent_requests_return_cached_summary():
 
     assert first.summary.inserted == 1
     assert second.summary.inserted == 1  # cached summary should match first run
+    assert first.sheet_url == second.sheet_url == processor.sheet_url
     assert len(gateway.rows) == 1
     assert gateway.find_request_log("req-4") is not None
