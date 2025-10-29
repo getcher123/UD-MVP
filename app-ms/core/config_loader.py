@@ -204,7 +204,7 @@ def get_rules(rules_path: str | Path) -> Dict[str, Any]:
                 "range_separators": ["-", "–"],
                 "render": {
                     "join_token": "; ",
-                    "range_dash": "-",
+                    "range_dash": "–",
                     "sort_numeric_first": True,
                     "uniq": True,
                 },

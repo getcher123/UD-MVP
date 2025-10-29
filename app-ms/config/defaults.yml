@@ -20,7 +20,7 @@ normalization:
       range_separators: ["-", "–"]
       render:
         join_token: "; "
-        range_dash: "-"
+        range_dash: "–"
         sort_numeric_first: true
         uniq: true
 

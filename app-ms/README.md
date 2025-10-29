@@ -62,6 +62,7 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | `BASE_URL` | базовый URL для генерации ссылок |
 | `MAX_FILE_MB`, `ALLOW_TYPES` и др. | см. `core/config.py` |
 | Настройки `app-audio` | `APP_AUDIO_URL`, `APP_AUDIO_TIMEOUT`, `APP_AUDIO_LANGUAGE`, `APP_AUDIO_MODEL` |
+| Интеграция с CRM | `APP_CRM_URL`, `APP_CRM_TIMEOUT` |
 | DOCX -> ChatGPT | `DOCX_TYPES` - список расширений DOCX, которые обрабатываются через Markdown + ChatGPT |
 | Excel -> ChatGPT | `EXCEL_TYPES` - список расширений для Excel, которые обрабатываются через CSV + ChatGPT |
 | Vision для PDF | `PDF_VISION_PROMPT_PATH`, `PDF_VISION_SCHEMA_PATH`, `OPENAI_VISION_MODEL` |
@@ -188,6 +189,7 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 - Для `ppt`/`pptx` используется этап `ppt_to_md`, который вытягивает текст (включая простые таблицы) в Markdown перед вызовом `chatgpt_structured`.
 - `postprocess.excel_export.enabled` позволяет отключить генерацию Excel; при запросе `output=excel` при выключенном блоке возвращается ошибка 503.
 - Для `pdf` доступны новые стадии `pdf_to_images` (рендер страниц в PNG через Poppler) и `vision_per_page` (распознавание GPT-vision по промпту и схеме), после чего результат передаётся в `pdf.chatgpt_structured`.
+- Если загружен Excel-файл, чьё имя начинается с `listing` (например, `listing.xlsx`, `listings.xlsx`), стандартный Excel-пайплайн пропускается: таблица конвертируется в CRM-пакет и отправляется на `APP_CRM_URL`; копии запроса/ответа сохраняются как `crm_request.json` и `crm_response.json`, а HTTP-ответ повторяет результат CRM.
 - Vision-разметка требует заполнять `raw_lines` и для каждого элемента массива `blocks` указывать `status` с оценкой качества распознавания (например: «полностью читабельно», «частично размыто», «добавлены ???»).
 - Если имя исходного файла содержит `enka`, во входящих данных присутствует `rent_rate`, а `opex_year_per_sqm` пустой, `opex_included` автоматически выставляется в «включен».
 

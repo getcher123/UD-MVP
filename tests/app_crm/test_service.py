@@ -54,6 +54,29 @@ def test_insert_new_listing():
     assert stored["request_id"] == "req-1"
 
 
+def test_insert_with_minimal_columns():
+    gateway = MemorySheetGateway()
+    processor = build_processor(gateway)
+
+    request = ImportListingsRequest(
+        request_id="req-minimal",
+        listings=[
+            ListingPayload(
+                building_name="CRM Core XP Tower minimal",
+                area_sqm=180,
+            )
+        ],
+    )
+
+    response = processor.process(request)
+
+    assert response.summary.inserted == 1
+    stored = gateway.rows[0].data
+    assert stored["building_name"] == "CRM Core XP Tower minimal"
+    assert stored["area_sqm"] == 180
+    assert stored["request_id"] == "req-minimal"
+
+
 def test_update_existing_listing_matches_by_area():
     gateway = MemorySheetGateway()
     processor = build_processor(gateway)

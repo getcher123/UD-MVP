@@ -16,6 +16,8 @@ from services.agentql_client import run_agentql
 from services.audio_client import transcribe_audio
 from services.chatgpt_structured import extract_structured_objects
 from services.chatgpt_vision import analyze_page_image
+from services.crm_client import send_listings_to_crm
+from services.crm_payload import prepare_crm_payload
 from services.excel_export import build_xlsx
 from services.excel_to_csv import excel_to_csv_text
 from services.docx_to_md import docx_to_md_text
@@ -112,10 +114,13 @@ async def process_file(
     query: Optional[str] = Form(None),
     request_id: Optional[str] = Form(None),
     output: Optional[str] = Form("excel"),
+    crm_forward: Optional[str] = Form(None),
 ) -> dict:
     start_ts = time.perf_counter()
     req_id = request_id or new_job_id()
-    filename = file.filename or "upload"
+    raw_filename = file.filename or "upload"
+    filename_candidate = Path(raw_filename).name
+    filename = filename_candidate if filename_candidate else "upload"
 
     src_path = build_result_path(req_id, filename, base_dir=settings.RESULTS_DIR)
     data = await file.read()
@@ -139,6 +144,41 @@ async def process_file(
     pipeline_cfg = _get_pipeline_cfg(rules)
     fmt_key = _detect_format(ext, is_audio)
     format_cfg = _get_format_cfg(pipeline_cfg, fmt_key)
+
+    stem_lower = Path(filename).stem.lower()
+    force_crm = crm_forward == "1"
+    crm_candidate = force_crm
+    crm_payload: dict[str, Any] | None = None
+    if not crm_candidate and ext in {"xls", "xlsx"}:
+        if stem_lower.startswith("listing") or _excel_has_listing_headers(src_path, rules):
+            crm_candidate = True
+
+    if crm_candidate:
+        try:
+            crm_payload = prepare_crm_payload(str(src_path), req_id, filename, rules)
+        except ServiceError as exc:
+            if force_crm or stem_lower.startswith("listing"):
+                raise
+            if exc.code != ErrorCode.CRM_SYNC_ERROR:
+                raise
+            crm_payload = None
+            crm_candidate = False
+
+    if crm_payload:
+        _persist_json(crm_payload, req_id, "crm_request.json")
+        crm_response = send_listings_to_crm(crm_payload, settings)
+        _persist_json(crm_response, req_id, "crm_response.json")
+        elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
+        return {
+            "request_id": req_id,
+            "crm_response": crm_response,
+            "meta": {
+                "source_file": os.path.basename(filename),
+                "listings_total": len(crm_payload.get("listings", [])),
+                "timing_ms": elapsed_ms,
+                "pipeline": "crm_forward",
+            },
+        }
 
     pipeline_steps: list[str] = []
     if fmt_key:
@@ -562,3 +602,51 @@ async def process_file(
     }
 
     return body
+def _excel_has_listing_headers(path: Path, rules: Mapping[str, Any]) -> bool:
+    output_cfg = rules.get("output") if isinstance(rules, Mapping) else None
+    header_map: dict[str, str] = {}
+    if isinstance(output_cfg, Mapping):
+        raw_columns = output_cfg.get("listing_columns")
+        if isinstance(raw_columns, (list, tuple)):
+            for col in raw_columns:
+                key: str | None = None
+                header: str | None = None
+                if isinstance(col, str):
+                    if "|" in col:
+                        k, h = col.split("|", 1)
+                        key = k.strip()
+                        header = h.strip()
+                    else:
+                        key = col.strip()
+                        header = key
+                elif isinstance(col, Mapping):
+                    raw_key = col.get("key") or col.get("id")
+                    if raw_key is not None:
+                        key = str(raw_key).strip()
+                        raw_header = col.get("title") or col.get("header") or col.get("name")
+                        header = str(raw_header).strip() if raw_header is not None else key
+                elif isinstance(col, (list, tuple)) and col:
+                    key = str(col[0]).strip()
+                    header = str(col[1]).strip() if len(col) > 1 and col[1] is not None else key
+                if key and header:
+                    header_map[key] = header
+
+    required_keys = ["building_name", "area_sqm", "use_type_norm"]
+    expected_headers = [header_map.get(k, k).strip().lower() for k in required_keys]
+
+    try:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            ws = wb.active
+            iterator = ws.iter_rows(min_row=1, max_row=1, values_only=True)
+            header_row = next(iterator, None)
+            if not header_row:
+                return False
+            actual = {str(cell).strip().lower() for cell in header_row if cell is not None and str(cell).strip()}
+            return all(h in actual for h in expected_headers)
+        finally:
+            wb.close()
+    except Exception:
+        return False

@@ -113,15 +113,18 @@ async def _process_telegram_file(
 
     try:
         logger.info("[documents] Отправляю файл в МС: path=%s kind=%s", dest, log_kind)
-        xlsx_bytes, out_name, status_messages = await process_file(dest, str(message.chat.id))
-        logger.info(
-            "[documents] Получена сводная таблица от МС: out_name=%s size=%sB kind=%s",
-            out_name,
-            len(xlsx_bytes),
-            log_kind,
-        )
-        buf = BufferedInputFile(xlsx_bytes, filename=out_name)
-        await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
+        binary_bytes, out_name, status_messages, text_message = await process_file(dest, str(message.chat.id))
+        if binary_bytes and out_name:
+            logger.info(
+                "[documents] Получена сводная таблица от МС: out_name=%s size=%sB kind=%s",
+                out_name,
+                len(binary_bytes),
+                log_kind,
+            )
+            buf = BufferedInputFile(binary_bytes, filename=out_name)
+            await message.answer_document(document=buf, caption="✅ Готово: сводная таблица")
+        if text_message:
+            await message.answer(text_message)
         for status in status_messages or []:
             text = status.get("message") if isinstance(status, dict) else None
             if text:

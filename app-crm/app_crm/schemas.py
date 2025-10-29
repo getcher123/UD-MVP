@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field, RootModel, ValidationError, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 LISTING_COLUMNS: list[str] = [
     "object_name",
@@ -30,10 +30,11 @@ LISTING_COLUMNS: list[str] = [
 
 
 class ListingPayload(BaseModel):
-    object_name: Optional[str] = None
     building_name: str
+    area_sqm: float
+
+    object_name: Optional[str] = None
     use_type_norm: Optional[str] = None
-    area_sqm: Optional[float] = None
     divisible_from_sqm: Optional[float] = None
     floors_norm: Optional[str] = None
     market_type: Optional[str] = None
@@ -51,11 +52,6 @@ class ListingPayload(BaseModel):
     recognition_summary: Optional[str] = None
     uncertain_parameters: Optional[List[Any]] = None
 
-    @model_validator(mode="after")
-    def ensure_area(cls, values: "ListingPayload") -> "ListingPayload":
-        # Area may be optional but for matching we rely on it; leave validation to service.
-        return values
-
 
 class ImportListingsRequest(BaseModel):
     request_id: str = Field(..., min_length=1)
@@ -65,10 +61,10 @@ class ImportListingsRequest(BaseModel):
     meta: Optional[dict[str, Any]] = None
 
     @model_validator(mode="after")
-    def validate_at_least_one_listing(cls, values: "ImportListingsRequest") -> "ImportListingsRequest":
-        if not values.listings:
+    def validate_at_least_one_listing(self) -> "ImportListingsRequest":
+        if not self.listings:
             raise ValueError("listings must contain at least one item")
-        return values
+        return self
 
 
 class SummaryPayload(BaseModel):
