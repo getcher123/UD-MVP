@@ -154,11 +154,11 @@ def derive_gross_month_total(listing: Dict[str, Any], rules: Dict[str, Any]) -> 
 
 def derive_all(listing: Dict[str, Any], rules: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Compute all derived metrics and quality flags from a normalized listing dict.
-    Returns keys: rent_rate_year_sqm_base, gross_month_total, quality_flags (list).
+    Compute all derived metrics and uncertainty hints from a normalized listing dict.
+    Returns keys: rent_rate_year_sqm_base, gross_month_total, uncertain_parameters (list).
     """
     out: Dict[str, Any] = {}
-    flags: list[str] = []
+    uncertain_fields: set[str] = set()
 
     base = derive_rent_rate_year_sqm_base(listing, rules)
     if base is not None:
@@ -171,17 +171,16 @@ def derive_all(listing: Dict[str, Any], rules: Dict[str, Any]) -> Dict[str, Any]
     # Quality flags
     area = _as_float(listing.get("area_sqm"))
     if area is not None and area <= 0:
-        flags.append("invalid_area")
+        uncertain_fields.add("area_sqm")
     qmin = _as_float(_r(rules, ["quality", "outliers", "rent_rate_year_sqm_base", "min"], None))
     qmax = _as_float(_r(rules, ["quality", "outliers", "rent_rate_year_sqm_base", "max"], None))
     if base is not None:
         if qmin is not None and base < qmin:
-            flags.append("base_rate_below_min")
+            uncertain_fields.add("rent_rate_year_sqm_base")
         if qmax is not None and base > qmax:
-            flags.append("base_rate_above_max")
+            uncertain_fields.add("rent_rate_year_sqm_base")
 
-    if flags:
-        out["quality_flags"] = ";".join(flags)
+    out["uncertain_parameters"] = sorted(uncertain_fields)
 
     return out
 

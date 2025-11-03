@@ -70,6 +70,8 @@ conf.yml
 config.json
 credentials.json
 data
+app-crm/config/service_account.json
+app-crm/config/sheets.local.yml
 
 # agentQL service
 /service_AQL/input

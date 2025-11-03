@@ -72,7 +72,7 @@ def _rules() -> Dict[str, Any]:
                 "sale_vat_norm_mode",
                 "source_files",
                 "request_id",
-                "quality_flags",
+                "uncertain_parameters",
             ]
         },
     }

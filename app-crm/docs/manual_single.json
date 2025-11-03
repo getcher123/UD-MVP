@@ -1,0 +1,19 @@
+{
+  "request_id": "111441123141le-2025-10-28-01",
+  "source_file": "smoke_manual.xlsx",
+  "received_at": "2025-10-28T13:27:00Z",
+  "listings": [
+    {
+      "object_name": "Смок-тест, помещение 4",
+      "building_name": " CRM Core XP Tower 41 ",
+      "use_type_norm": "Офис",
+      "area_sqm": 302,
+      "divisible_from_sqm": 220,
+      "floors_norm": "8888 этаж",
+      "market_type": "Аренда!!!"
+    }
+  ],
+  "meta": {
+    "listings_total": 1
+  }
+}

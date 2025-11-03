@@ -4,6 +4,7 @@
 
 ## Возможности
 - Документы (PDF/DOC/PPT/PPTX/TXT/JPG/PNG) приводятся к PDF и проходят через AgentQL;
+- PDF дополнительно обрабатываются через vision-пайплайн: страницы рендерятся в PNG, распознаются GPT-vision с функцией `emit_page`, затем результат нормализуется и агрегируется;
 - DOCX конвертируется в Markdown и разбирается ChatGPT по той же инструкции, что и для аудио;
 - Excel (XLS/XLSX/XLSM) конвертируется в CSV и разбирается ChatGPT по той же инструкции, что и для аудио;
 - Аудио (WAV/MP3/M4A/OGG/AAC) обрабатывается сервисом app-audio (`/v1/transcribe`), затем ChatGPT извлекает структуру из SRT;
@@ -61,8 +62,15 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | `BASE_URL` | базовый URL для генерации ссылок |
 | `MAX_FILE_MB`, `ALLOW_TYPES` и др. | см. `core/config.py` |
 | Настройки `app-audio` | `APP_AUDIO_URL`, `APP_AUDIO_TIMEOUT`, `APP_AUDIO_LANGUAGE`, `APP_AUDIO_MODEL` |
+| Интеграция с CRM | `APP_CRM_URL`, `APP_CRM_TIMEOUT` |
 | DOCX -> ChatGPT | `DOCX_TYPES` - список расширений DOCX, которые обрабатываются через Markdown + ChatGPT |
 | Excel -> ChatGPT | `EXCEL_TYPES` - список расширений для Excel, которые обрабатываются через CSV + ChatGPT |
+| Vision для PDF | `PDF_VISION_PROMPT_PATH`, `PDF_VISION_SCHEMA_PATH`, `OPENAI_VISION_MODEL` |
+| Поппер | `POPPLER_PATH` — путь к bin-каталогу Poppler для `pdf2image` |
+
+### Дополнительно: Poppler
+- Для rasterизации PDF до PNG используется `pdf2image`, которому нужен установленный [Poppler](https://github.com/oschwartz10612/poppler-windows/releases).
+- На Windows укажите путь к `poppler\Library\bin` в `POPPLER_PATH` (через `.env` или переменные среды) перед запуском сервиса.
 
 ## Нормализация данных
 Правила описаны в `app-ms/config/defaults.yml` (версия 3) и автоматически подхватываются при старте сервиса.
@@ -176,8 +184,14 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 - `common.pdf_conversion` и `common.agentql` задают значения по умолчанию: движок (`engine: libreoffice`), режим AgentQL (`mode: standard`) и тайм-аут (`timeout_sec`). Значения можно переопределить на уровне конкретного формата.
 - `excel.uno_borders` управляет запуском скрипта `scripts/uno_set_borders.py`; толщина линий берётся из `width_pt` (по умолчанию 1.0 pt).
 - `audio.transcription` и `audio.chatgpt_structured` отвечают за распознавание речи и структурирование расшифровки. Если транскрибация отключена, сервис вернёт 503.
-- Для `doc`/`ppt`/`xls`/`txt` и изображений блок `pdf_conversion` определяет, будет ли выполняться конвертация и каким движком (`img2pdf` для `image`).
+- Для `xls`/`txt` и изображений блок `pdf_conversion` решает, выполнять ли конвертацию и каким движком (`img2pdf` для ветки `image`).
+- Для `doc`/`docx` документ преобразуется в Markdown (`doc_to_md`/`docx_to_md`), после чего запускается `chatgpt_structured`.
+- Для `ppt`/`pptx` используется этап `ppt_to_md`, который вытягивает текст (включая простые таблицы) в Markdown перед вызовом `chatgpt_structured`.
 - `postprocess.excel_export.enabled` позволяет отключить генерацию Excel; при запросе `output=excel` при выключенном блоке возвращается ошибка 503.
+- Для `pdf` доступны новые стадии `pdf_to_images` (рендер страниц в PNG через Poppler) и `vision_per_page` (распознавание GPT-vision по промпту и схеме), после чего результат передаётся в `pdf.chatgpt_structured`.
+- Если загружен Excel-файл, чьё имя начинается с `listing` (например, `listing.xlsx`, `listings.xlsx`), стандартный Excel-пайплайн пропускается: таблица конвертируется в CRM-пакет и отправляется на `APP_CRM_URL`; копии запроса/ответа сохраняются как `crm_request.json` и `crm_response.json`, а HTTP-ответ повторяет результат CRM.
+- Vision-разметка требует заполнять `raw_lines` и для каждого элемента массива `blocks` указывать `status` с оценкой качества распознавания (например: «полностью читабельно», «частично размыто», «добавлены ???»).
+- Если имя исходного файла содержит `enka`, во входящих данных присутствует `rent_rate`, а `opex_year_per_sqm` пустой, `opex_included` автоматически выставляется в «включен».
 
 ## Формирование Excel
 Каждое помещение выгружается отдельной строкой. Порядок и заголовки колонок соответствуют `output.listing_columns`:
@@ -202,7 +216,8 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | `sale_vat_norm` | `НДС (цена продажи)` |
 | `source_file` | `Исходный файл` |
 | `request_id` | `Идентификатор запроса` |
-| `quality_flags` | `Флаги качества` |
+| `recognition_summary` | `Сводка распознавания` |
+| `uncertain_parameters` | `Сомнительные параметры` |
 
 Идентификаторы (`listing_id`, `building_id`) формируются по правилам `identifier` из `defaults.yml`.
 

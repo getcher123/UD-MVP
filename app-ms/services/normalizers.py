@@ -150,6 +150,8 @@ def normalize_vat(value: Any, rules: dict) -> str | None:
             return "не применяется"
     if t_lower in {"не применяется", "усн"}:
         return "не применяется"
+    if "действующей ставке" in t_lower:
+        return "включен"
     return None
 
 
@@ -293,7 +295,7 @@ def render_floors(floors: list[StrOrInt], cfg: dict) -> str:
     fc = _floor_cfg(cfg)
     render = _get(fc, ["multi", "render"], {})
     join_token: str = render.get("join_token", "; ")
-    range_dash: str = render.get("range_dash", "–")
+    range_dash: str = render.get("range_dash", "-")
     sort_numeric_first: bool = bool(render.get("sort_numeric_first", True))
     uniq: bool = bool(render.get("uniq", True))
 
@@ -385,17 +387,20 @@ def normalize_listing_core(src: dict, parent: dict, rules: dict) -> dict:
             divisible_int = None
 
     opex_year_val = to_float(src_clean.get("opex_year_per_sqm"))
-
-    opex_included_value: Optional[str] = None
-    opex_canon = map_to_canon(src_clean.get("opex_included"), rules, "opex_included")
-    if opex_canon in {"включен", "не включен"}:
-        opex_included_value = opex_canon
+    if opex_year_val == 0:
+        opex_year_val = None
+        opex_included_value: Optional[str] = "включен"
     else:
-        bool_val = boolish(src_clean.get("opex_included"))
-        if bool_val is True:
-            opex_included_value = "включен"
-        elif bool_val is False:
-            opex_included_value = "не включен"
+        opex_included_value: Optional[str] = None
+        opex_canon = map_to_canon(src_clean.get("opex_included"), rules, "opex_included")
+        if opex_canon in {"включен", "не включен"}:
+            opex_included_value = opex_canon
+        else:
+            bool_val = boolish(src_clean.get("opex_included"))
+            if bool_val is True:
+                opex_included_value = "включен"
+            elif bool_val is False:
+                opex_included_value = "не включен"
 
     if opex_included_value is None and opex_year_val is not None:
         opex_fallback = (rules.get("fallbacks", {}) or {}).get("opex_included", {})
