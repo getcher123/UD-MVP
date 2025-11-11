@@ -145,6 +145,7 @@ async def process_file(
     rules = get_rules(settings.RULES_PATH)
     pipeline_cfg = _get_pipeline_cfg(rules)
     fmt_key = _detect_format(ext, is_audio)
+    treat_as_pdf = fmt_key in {"pdf", "image"}
     format_cfg = _get_format_cfg(pipeline_cfg, fmt_key)
 
     stem_lower = Path(filename).stem.lower()
@@ -192,6 +193,7 @@ async def process_file(
         pipeline_steps.append(fmt_key)
 
     payload: dict[str, object]
+    pdf_path: str | None = None
     pending_questions: list[dict[str, object]] = []
     agentql_mode_meta: Optional[str] = None
 
@@ -374,86 +376,99 @@ async def process_file(
         payload = extract_structured_objects(md_text)
         pipeline_steps.append("chatgpt_structured")
         _persist_json(payload, req_id, "chatgpt_structured.json")
-    else:
+    elif treat_as_pdf:
         if fmt_key == "pdf":
             pdf_path = str(src_path)
+        else:
+            pdf_stage_cfg = _get_stage_cfg(pipeline_cfg, fmt_key, "pdf_conversion")
+            if not _cfg_enabled(pdf_stage_cfg, True):
+                raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 503, "PDF conversion disabled via configuration")
 
             try:
-                pdf_src = Path(pdf_path)
-                if pdf_src.exists():
-                    pdf_dest = build_result_path(req_id, pdf_src.name, base_dir=settings.RESULTS_DIR)
-                    if str(pdf_dest) != str(pdf_src):
-                        write_bytes(pdf_dest, pdf_src.read_bytes())
-            except Exception:  # pragma: no cover - diagnostics helper
-                pass
-
-            images_stage_cfg = _get_stage_cfg(pipeline_cfg, "pdf", "pdf_to_images")
-            if not _cfg_enabled(images_stage_cfg, True):
-                raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "PDF to images disabled via configuration")
-
-            dpi_value = images_stage_cfg.get("dpi")
-            try:
-                dpi = int(dpi_value) if dpi_value is not None else 150
-            except (TypeError, ValueError):
-                dpi = 150
-
-            format_value = images_stage_cfg.get("format") or images_stage_cfg.get("image_format")
-            if isinstance(format_value, str) and format_value.strip():
-                image_format = format_value.strip().lower()
-            else:
-                image_format = "png"
-
-            poppler_override = images_stage_cfg.get("poppler_path")
-            if isinstance(poppler_override, str) and poppler_override.strip():
-                poppler_path = poppler_override.strip()
-            else:
-                poppler_path = settings.POPPLER_PATH
-
-            pages_dir = Path(settings.RESULTS_DIR) / req_id / "pdf_pages"
-            try:
-                page_images = pdf_to_images(
-                    pdf_path,
-                    str(pages_dir),
-                    dpi=dpi,
-                    image_format=image_format,
-                    poppler_path=poppler_path,
-                )
+                pdf_path = to_pdf(str(src_path), settings.PDF_TMP_DIR, format_cfg, pdf_stage_cfg)
             except ServiceError:
                 raise
-            except Exception as exc:  # noqa: BLE001
-                raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to rasterize PDF: {exc}") from exc
+            except Exception as e:  # noqa: BLE001
+                raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to convert to PDF: {e}")
+            pipeline_steps.append("pdf_conversion")
 
-            pipeline_steps.append("pdf_to_images")
+        try:
+            pdf_src = Path(pdf_path)
+            if pdf_src.exists():
+                pdf_dest = build_result_path(req_id, pdf_src.name, base_dir=settings.RESULTS_DIR)
+                if str(pdf_dest) != str(pdf_src):
+                    write_bytes(pdf_dest, pdf_src.read_bytes())
+        except Exception:  # pragma: no cover - diagnostics helper
+            pass
 
-            vision_stage_cfg = _get_stage_cfg(pipeline_cfg, "pdf", "vision_per_page")
-            if not _cfg_enabled(vision_stage_cfg, True):
-                raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "PDF vision stage disabled via configuration")
+        stage_key = "pdf"
+        images_stage_cfg = _get_stage_cfg(pipeline_cfg, stage_key, "pdf_to_images")
+        if not _cfg_enabled(images_stage_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "PDF to images disabled via configuration")
 
-            prompt_override = vision_stage_cfg.get("prompt_path") or vision_stage_cfg.get("prompt")
-            if isinstance(prompt_override, str) and prompt_override.strip():
-                prompt_override = prompt_override.strip()
-            else:
-                prompt_override = None
+        dpi_value = images_stage_cfg.get("dpi")
+        try:
+            dpi = int(dpi_value) if dpi_value is not None else 150
+        except (TypeError, ValueError):
+            dpi = 150
 
-            model_override = vision_stage_cfg.get("model")
-            if isinstance(model_override, str) and model_override.strip():
-                model_override = model_override.strip()
-            else:
-                model_override = None
+        format_value = images_stage_cfg.get("format") or images_stage_cfg.get("image_format")
+        if isinstance(format_value, str) and format_value.strip():
+            image_format = format_value.strip().lower()
+        else:
+            image_format = "png"
 
-            page_payloads: list[dict[str, Any]] = []
-            for idx, image_path in enumerate(page_images, start=1):
-                page_data = analyze_page_image(image_path, prompt_path=prompt_override, model=model_override)
-                if isinstance(page_data, dict) and "page_index" not in page_data:
-                    page_data["page_index"] = idx
-                page_payloads.append(page_data)
-                try:
-                    write_text(
-                        build_result_path(req_id, f"pdf_page_{idx:04d}.json", base_dir=settings.RESULTS_DIR),
-                        json.dumps(page_data, ensure_ascii=False, indent=2),
-                    )
-                except Exception:  # pragma: no cover - diagnostics helper
-                    pass
+        poppler_override = images_stage_cfg.get("poppler_path")
+        if isinstance(poppler_override, str) and poppler_override.strip():
+            poppler_path = poppler_override.strip()
+        else:
+            poppler_path = settings.POPPLER_PATH
+
+        pages_dir = Path(settings.RESULTS_DIR) / req_id / "pdf_pages"
+        try:
+            page_images = pdf_to_images(
+                pdf_path,
+                str(pages_dir),
+                dpi=dpi,
+                image_format=image_format,
+                poppler_path=poppler_path,
+            )
+        except ServiceError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ServiceError(ErrorCode.PDF_CONVERSION_ERROR, 422, f"Failed to rasterize PDF: {exc}") from exc
+
+        pipeline_steps.append("pdf_to_images")
+
+        vision_stage_cfg = _get_stage_cfg(pipeline_cfg, stage_key, "vision_per_page")
+        if not _cfg_enabled(vision_stage_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "PDF vision stage disabled via configuration")
+
+        prompt_override = vision_stage_cfg.get("prompt_path") or vision_stage_cfg.get("prompt")
+        if isinstance(prompt_override, str) and prompt_override.strip():
+            prompt_override = prompt_override.strip()
+        else:
+            prompt_override = None
+
+        model_override = vision_stage_cfg.get("model")
+        if isinstance(model_override, str) and model_override.strip():
+            model_override = model_override.strip()
+        else:
+            model_override = None
+
+        page_payloads: list[dict[str, Any]] = []
+        for idx, image_path in enumerate(page_images, start=1):
+            page_data = analyze_page_image(image_path, prompt_path=prompt_override, model=model_override)
+            if isinstance(page_data, dict) and "page_index" not in page_data:
+                page_data["page_index"] = idx
+            page_payloads.append(page_data)
+            try:
+                write_text(
+                    build_result_path(req_id, f"pdf_page_{idx:04d}.json", base_dir=settings.RESULTS_DIR),
+                    json.dumps(page_data, ensure_ascii=False, indent=2),
+                )
+            except Exception:  # pragma: no cover - diagnostics helper
+                pass
 
             try:
                 write_text(
@@ -465,15 +480,15 @@ async def process_file(
 
             pipeline_steps.append("vision_per_page")
 
-            chatgpt_cfg = _get_stage_cfg(pipeline_cfg, "pdf", "chatgpt_structured")
-            if _cfg_enabled(chatgpt_cfg, True):
-                payload = extract_structured_objects(page_payloads)
-                pipeline_steps.append("chatgpt_structured")
-                _persist_json(payload, req_id, "chatgpt_structured.json")
-            else:
-                payload = {"objects": []}
-                pipeline_steps.append("chatgpt_skip")
+        chatgpt_cfg = _get_stage_cfg(pipeline_cfg, stage_key, "chatgpt_structured")
+        if _cfg_enabled(chatgpt_cfg, True):
+            payload = extract_structured_objects(page_payloads)
+            pipeline_steps.append("chatgpt_structured")
+            _persist_json(payload, req_id, "chatgpt_structured.json")
         else:
+            payload = {"objects": []}
+            pipeline_steps.append("chatgpt_skip")
+    else:
             pdf_stage_cfg = _get_stage_cfg(pipeline_cfg, fmt_key, "pdf_conversion")
             pdf_enabled_default = fmt_key != "pdf"
             if _cfg_enabled(pdf_stage_cfg, pdf_enabled_default):
