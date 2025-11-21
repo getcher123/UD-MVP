@@ -376,6 +376,24 @@ async def process_file(
         payload = extract_structured_objects(md_text)
         pipeline_steps.append("chatgpt_structured")
         _persist_json(payload, req_id, "chatgpt_structured.json")
+    elif fmt_key == "txt":
+        txt_path = Path(src_path)
+        try:
+            text_content = txt_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            text_content = txt_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception as exc:  # noqa: BLE001
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 500, f"Failed to read TXT file: {exc}") from exc
+
+        pipeline_steps.append("txt_read")
+
+        chatgpt_cfg = _get_stage_cfg(pipeline_cfg, "txt", "chatgpt_structured")
+        if not _cfg_enabled(chatgpt_cfg, True):
+            raise ServiceError(ErrorCode.INTERNAL_ERROR, 503, "TXT ChatGPT disabled via configuration")
+
+        payload = extract_structured_objects(text_content)
+        pipeline_steps.append("chatgpt_structured")
+        _persist_json(payload, req_id, "chatgpt_structured.json")
     elif treat_as_pdf:
         if fmt_key == "pdf":
             pdf_path = str(src_path)

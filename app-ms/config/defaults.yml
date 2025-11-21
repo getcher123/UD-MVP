@@ -206,8 +206,8 @@ pipeline:
       enabled: true
   txt:
     pdf_conversion:
-      enabled: true
-    agentql:
+      enabled: false
+    chatgpt_structured:
       enabled: true
   audio:
     transcription:
