@@ -1,11 +1,19 @@
-﻿--extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.3.0+cu121
-torchvision==0.18.0+cu121
-torchaudio==2.3.0+cu121
+﻿# Default: CPU stack
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
+ctranslate2==4.6.1
+faster-whisper==1.2.1
+numpy==1.26.4
 cython>=0.29
 ffmpeg-python>=0.2.0
-numpy<2
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 pydantic<3
 transformers<4.45
+
+# For CUDA 12.1, comment out the three CPU torch lines above and use:
+# --extra-index-url https://download.pytorch.org/whl/cu121
+# torch==2.3.0+cu121
+# torchvision==0.18.0+cu121
+# torchaudio==2.3.0+cu121

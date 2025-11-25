@@ -110,6 +110,7 @@ deactivate
   - Файл `app-crm/config/service_account.json` (ключ сервисного аккаунта, в git не хранится).
   - Настроить `app-crm/config/sheets.local.yml` по образцу `sheets.example.yml`
     или задать переменные: `CRM_GOOGLE_SERVICE_ACCOUNT_JSON`, `CRM_SHEET_ID`, `CRM_SHEET_NAME`, `CRM_CACHE_URL`.
+    Если `sheets.local.yml` отсутствует, CRM возьмёт ID/лист из переменных `.env` (`CRM_SHEET_ID`, `CRM_SHEET_NAME`, опционально `CRM_SERVICE_ACCOUNT_FILE`/`CRM_GOOGLE_SERVICE_ACCOUNT_JSON`).
   - Заливка ключа на сервер (пример из Windows с кавычками в пути):  
     PowerShell/Git Bash: `scp "C:\Users\<you>\Downloads\cred.json" cyberdb_admin@10.6.97.25:/opt/ud-mvp/app-crm/config/service_account.json`  
     WSL: `scp /mnt/c/Users/<you>/Downloads/cred.json cyberdb_admin@10.6.97.25:/opt/ud-mvp/app-crm/config/service_account.json`  
@@ -169,11 +170,47 @@ deactivate
   TORCH_DEVICE=cpu    # или cuda если есть GPU
   APP_AUDIO_DEFAULT_MODEL=medium   # при необходимости
   ```
-  Если в `requirements.txt` нет готового Torch под вашу платформу, установите CPU-версию вручную:
+  CPU по умолчанию (Torch 2.2.2). Для GPU подберите пакет под CUDA (см. https://pytorch.org/get-started/locally/).
+  Убедитесь, что есть зависимый репозиторий `app-audio/whisper-diarization` (если нет — `git clone --depth 1 https://github.com/MahmoudAshraf97/whisper-diarization.git app-audio/whisper-diarization`).
+  Системные пакеты для PyAV: `sudo apt-get install -y pkg-config ffmpeg libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libswscale-dev libavfilter-dev`.
+  Единый патч `.env` (замени плейсхолдеры, остальные строки не тронет):
   ```bash
-  pip install --index-url https://download.pytorch.org/whl/cpu torch==2.2.2
+  python - <<'PY'
+  from pathlib import Path
+  env_path = Path("/opt/ud-mvp/.env")
+  updates = {
+      "BOT_TOKEN": "<your_bot_token>",
+      "MICROSERVICE_BASE_URL": "http://127.0.0.1:8000",
+      "WEBHOOK_URL": "https://your.domain/webhook",
+      "MAX_FILE_MB": "20",
+      "AGENTQL_API_KEY": "<your_agentql_or_openai_key>",
+      "BASE_URL": "http://localhost:8000",
+      "RESULTS_DIR": "/opt/ud-mvp/data/results",
+      "APP_AUDIO_URL": "http://127.0.0.1:8001",
+      "APP_CRM_URL": "http://127.0.0.1:8010",
+      "APP_AUDIO_LANGUAGE": "ru",
+      "APP_AUDIO_MODEL": "medium",
+      "POPPLER_PATH": "/usr/bin",
+      "SOFFICE_PATH": "/usr/bin/soffice",
+      "CRM_GOOGLE_SERVICE_ACCOUNT_JSON": "/opt/ud-mvp/app-crm/config/service_account.json",
+      "CRM_SHEET_ID": "<your_sheet_id>",
+      "CRM_SHEET_NAME": "V1",
+  }
+  lines = env_path.read_text().splitlines()
+  out, seen = [], set()
+  for line in lines:
+      key = line.split("=", 1)[0] if "=" in line else None
+      if key in updates:
+          out.append(f"{key}={updates[key]}")
+          seen.add(key)
+      else:
+          out.append(line)
+  for k, v in updates.items():
+      if k not in seen:
+          out.append(f"{k}={v}")
+  env_path.write_text("\n".join(out) + "\n")
+  PY
   ```
-  Для GPU подберите пакет под вашу CUDA (см. https://pytorch.org/get-started/locally/).
 
 ## 6. Запуск сервисов (рекомендуется tmux, чтобы не блокировать терминал)
 Создайте venv и установите зависимости (один раз), затем поднимайте сервисы в отдельных tmux-сессиях `-d` (в фоне). Логи можно смотреть `tmux attach -t <name>` и выходить `Ctrl+b d`.
@@ -183,6 +220,8 @@ deactivate
 cd /opt/ud-mvp
 python3 -m venv .venv_audio && source .venv_audio/bin/activate
 pip install -r app-audio/requirements.txt
+# зависимости whisper-diarization
+cd app-audio/whisper-diarization && pip install -r requirements.txt -c constraints.txt && cd /opt/ud-mvp
 tmux new -s audio -d 'cd /opt/ud-mvp && source .venv_audio/bin/activate && uvicorn app-audio.main:app --host 0.0.0.0 --port 8001 --env-file /opt/ud-mvp/.env'
 ```
 

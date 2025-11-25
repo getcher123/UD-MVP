@@ -13,10 +13,13 @@ python -m venv .venv_audio
 .\.venv_audio\Scripts\activate
 pip install -r app-audio/requirements.txt
 
-# 3. Установить CUDA Toolkit 12.1 + cuDNN 9.x (GPU)
-#    Скачайте CUDA 12.1 с https://developer.nvidia.com/cuda-downloads и поставьте Toolkit.
-#    Из архива cuDNN for CUDA 12.x скопируйте содержимое папок bin/lib/include в каталоги CUDA (v12.1).
-#    После установки проверьте `nvcc --version` и `python -c "import torch; print(torch.cuda.is_available())"`.
+# 3. Выбор стека Torch
+#    CPU (по умолчанию в requirements): torch/vision/audio 2.2.2.
+#    Если нужна GPU — замените CPU-пакеты на сборки под вашу CUDA:
+#    pip install --force-reinstall --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0
+#    И предварительно поставьте CUDA Toolkit 12.1 + cuDNN 9.x.
+#    После установки проверьте `nvcc --version` и `python - <<'PY'\nimport torch; print(torch.cuda.is_available())\nPY`.
+#    Для выбора режима укажите в `.env` `TORCH_DEVICE=cpu` или `TORCH_DEVICE=cuda` в соответствии с установленной сборкой.
 
 # 4. Установить MSVC Build Tools (только Windows)
 #    Для сборки ctc-forced-aligner и texterrors нужны компиляторы.

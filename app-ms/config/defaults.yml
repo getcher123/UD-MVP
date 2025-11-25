@@ -193,7 +193,6 @@ pipeline:
       enabled: true
       dpi: 250
       format: png
-      poppler_path: "C:\\Program Files\\Poppler\\Library\\bin"
     vision_per_page:
       enabled: true
     chatgpt_structured:

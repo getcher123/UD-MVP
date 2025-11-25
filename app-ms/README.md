@@ -75,12 +75,12 @@ curl -X POST -F "file=@examples/demo.pdf" http://localhost:8000/process_file -o 
 | DOCX -> ChatGPT                    | `DOCX_TYPES` - список расширений DOCX, которые обрабатываются через Markdown + ChatGPT  |
 | Excel -> ChatGPT                   | `EXCEL_TYPES` - список расширений для Excel, которые обрабатываются через CSV + ChatGPT |
 | Vision для PDF                     | `PDF_VISION_PROMPT_PATH`, `PDF_VISION_SCHEMA_PATH`, `OPENAI_VISION_MODEL`               |
-| Поппер                             | `POPPLER_PATH` — путь к bin-каталогу Poppler для `pdf2image`                            |
+| Поппер                             | `POPPLER_PATH` — путь к bin-каталогу Poppler для `pdf2image` (берётся из `.env`)        |
 
 ### Дополнительно: Poppler
 
 - Для rasterизации PDF до PNG используется `pdf2image`, которому нужен установленный [Poppler](https://github.com/oschwartz10612/poppler-windows/releases).
-- На Windows укажите путь к `poppler\Library\bin` в `POPPLER_PATH` (через `.env` или переменные среды) перед запуском сервиса.
+- Пути задаём только через `.env` (`POPPLER_PATH`); по умолчанию на Linux хватит Poppler из `/usr/bin`. На Windows укажите `poppler\Library\bin` в `.env`.
 
 ## Нормализация данных
 
