@@ -76,3 +76,5 @@ app-crm/config/sheets.local.yml
 # agentQL service
 /service_AQL/input
 /service_AQL/ground_truth
+
+/app-audio/whisper-diarization
