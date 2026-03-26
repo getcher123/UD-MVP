@@ -76,3 +76,20 @@ def test_prepare_crm_payload_requires_building_name(tmp_path):
 
     with pytest.raises(ServiceError):
         prepare_crm_payload(str(excel_path), "req-3", "listings.xlsx", _rules_stub())
+
+
+def test_prepare_crm_payload_skips_rows_missing_required_fields(tmp_path):
+    rows = [
+        ["Здание", "Площадь, кв.м.", "OPEX включен", "Сомнительные параметры"],
+        ["Башня А", None, "включен", ""],  # invalid: missing area
+        ["Башня А", 321.0, "включен", ""],
+    ]
+    excel_path = _write_workbook(tmp_path, rows)
+
+    payload = prepare_crm_payload(str(excel_path), "req-4", "listings.xlsx", _rules_stub())
+
+    assert payload["meta"]["listings_total"] == 1
+    assert payload["meta"]["skipped_invalid_rows"] == 1
+    assert payload["meta"]["skipped_invalid_examples"][0]["row_index"] == 2
+    assert payload["meta"]["skipped_invalid_examples"][0]["reason"] == "missing area_sqm"
+    assert payload["listings"][0]["area_sqm"] == 321.0

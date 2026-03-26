@@ -26,7 +26,7 @@ def prepare_crm_payload(
     source_file: str,
     rules: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    listings = _read_listings(excel_path, request_id, source_file, rules)
+    listings, skipped = _read_listings(excel_path, request_id, source_file, rules)
     if not listings:
         raise ServiceError(ErrorCode.CRM_SYNC_ERROR, 400, "listings.xlsx does not contain any rows")
 
@@ -38,6 +38,8 @@ def prepare_crm_payload(
         "listings": listings,
         "meta": {
             "listings_total": len(listings),
+            "skipped_invalid_rows": len(skipped),
+            "skipped_invalid_examples": skipped[:10],
             "origin": "app-ms",
         },
     }
@@ -49,7 +51,7 @@ def _read_listings(
     request_id: str,
     source_file: str,
     rules: Mapping[str, Any],
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     header_map, key_map = _build_header_lookup(rules)
 
     wb = load_workbook(excel_path, data_only=True, read_only=True)
@@ -59,10 +61,11 @@ def _read_listings(
         try:
             headers = next(iterator)
         except StopIteration:
-            return []
+            return [], []
 
         resolved_keys = [_resolve_key(h, header_map, key_map) for h in headers]
         listings: list[dict[str, Any]] = []
+        skipped_invalid: list[dict[str, Any]] = []
 
         for row_index, row_values in enumerate(iterator, start=2):
             if _is_row_empty(row_values):
@@ -82,17 +85,19 @@ def _read_listings(
             listing["uncertain_parameters"] = _ensure_uncertain_list(listing.get("uncertain_parameters"))
 
             if "building_name" not in listing or not str(listing["building_name"]).strip():
-                raise ServiceError(ErrorCode.CRM_SYNC_ERROR, 400, f"Row {row_index} is missing building_name")
+                skipped_invalid.append({"row_index": row_index, "reason": "missing building_name"})
+                continue
 
             if "area_sqm" not in listing or listing["area_sqm"] is None:
-                raise ServiceError(ErrorCode.CRM_SYNC_ERROR, 400, f"Row {row_index} is missing area_sqm")
+                skipped_invalid.append({"row_index": row_index, "reason": "missing area_sqm"})
+                continue
 
             if not isinstance(listing["building_name"], str):
                 listing["building_name"] = str(listing["building_name"])
 
             listings.append(listing)
 
-        return listings
+        return listings, skipped_invalid
     finally:
         wb.close()
 

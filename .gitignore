@@ -78,3 +78,6 @@ app-crm/config/sheets.local.yml
 /service_AQL/ground_truth
 
 /app-audio/whisper-diarization
+/app-ms/.pandoc_local/
+/app-ms/.poppler_local/
+/app-ms/pandoc.tar.gz

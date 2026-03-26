@@ -120,3 +120,12 @@ MICROSERVICE_READ_TIMEOUT=360  # пример увеличенного ожид�
 - Основная документация: `app-ms/README.md`.
 - Кратко: принимает загруженные файлы, конвертирует в PDF при необходимости, вытаскивает данные (AgentQL/ChatGPT), нормализует и возвращает Excel/JSON.
 - Основной эндпоинт: `POST /process_file` (multipart: `file`, опции `output`, `request_id`). Дополнительно `GET /healthz`, `GET /version`.
+
+## Makefile (сборка/запуск/деплой)
+
+В корне проекта есть `Makefile` для типовых операций.
+
+- Сборка/запуск (на текущей машине): `make build`, `make start`, `make health`, `make stop`, `make test`
+- Smoke PDF (нужно указать request dir): `make smoke-pdf REQUEST_DIR=app-ms/data/results/<request_id>`
+- Деплой на старый сервер: `make deploy-old` (git pull `--ff-only` + `start_all.sh` + restart), `make health-old`
+- Параметры (если нужно переопределить): `PROD_SSH`, `PROD_PATH`, `PROD_BRANCH`

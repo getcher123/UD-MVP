@@ -9,7 +9,8 @@ from typing import Sequence
 
 
 def _build_command(path: Path, to_format: str, extra_args: Sequence[str] | None) -> list[str]:
-    cmd = ["pandoc", str(path), "-t", to_format]
+    pandoc_bin = os.getenv("PANDOC_PATH") or "pandoc"
+    cmd = [pandoc_bin, str(path), "-t", to_format]
     if extra_args:
         cmd.extend(extra_args)
     return cmd
